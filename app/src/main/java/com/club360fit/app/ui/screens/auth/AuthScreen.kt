@@ -32,7 +32,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import com.club360fit.app.ui.theme.BurgundyPrimary
 import com.club360fit.app.ui.theme.White
 import com.club360fit.app.ui.utils.fromFeetInches
@@ -51,6 +54,7 @@ fun AuthScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val scrollState = rememberScrollState()
+    var passwordVisible by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -102,13 +106,34 @@ fun AuthScreen(
                 label = { Text("Password") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = BurgundyPrimary,
                     focusedLabelColor = BurgundyPrimary,
                     cursorColor = BurgundyPrimary
                 )
             )
+            if (isSignIn) {
+                TextButton(
+                    onClick = { viewModel.sendPasswordResetEmail(state.email) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Forgot password?", color = BurgundyPrimary)
+                }
+                if (state.resetEmailSent) {
+                    Text("Check your email for a reset link.", color = MaterialTheme.colorScheme.primary)
+                }
+                state.resetErrorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
 
             if (!isSignIn) {
                 Spacer(modifier = Modifier.height(20.dp))

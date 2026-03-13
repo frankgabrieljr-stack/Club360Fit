@@ -34,7 +34,9 @@ data class AuthUiState(
     val workoutFrequency: String = "",
     val overallGoal: String = "",
     val isLoading: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val resetEmailSent: Boolean = false,
+    val resetErrorMessage: String? = null
 )
 
 class AuthViewModel : ViewModel() {
@@ -55,6 +57,31 @@ class AuthViewModel : ViewModel() {
     fun updateWorkoutFrequency(value: String) = _uiState.update { it.copy(workoutFrequency = value) }
     fun updateOverallGoal(value: String) = _uiState.update { it.copy(overallGoal = value) }
     fun clearError() = _uiState.update { it.copy(errorMessage = null) }
+    fun clearResetMessage() = _uiState.update { it.copy(resetEmailSent = false, resetErrorMessage = null) }
+
+    fun sendPasswordResetEmail(email: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(resetEmailSent = false, resetErrorMessage = null) }
+            val trimmed = email.trim()
+            if (trimmed.isBlank()) {
+                _uiState.update { it.copy(resetErrorMessage = "Enter your email to receive a reset link.") }
+                return@launch
+            }
+            try {
+                withContext(Dispatchers.IO) {
+                    SupabaseClient.client.auth.resetPasswordForEmail(
+                        email = trimmed,
+                        redirectUrl = "club360fit://reset"
+                    )
+                }
+                _uiState.update { it.copy(resetEmailSent = true) }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(resetErrorMessage = e.message ?: "Failed to send reset email.")
+                }
+            }
+        }
+    }
 
     fun submit(isSignIn: Boolean, onSuccess: (Boolean) -> Unit) {
         viewModelScope.launch {

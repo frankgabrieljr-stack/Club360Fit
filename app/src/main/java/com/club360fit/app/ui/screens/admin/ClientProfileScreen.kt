@@ -376,6 +376,11 @@ fun ClientProfileScreen(
                     style = MaterialTheme.typography.titleMedium,
                     color = BurgundyPrimary
                 )
+                Text(
+                    "Control what this client can see in the app (meals, workouts, payments, events).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 PrivSwitchRow(
                     label = "Nutrition plans",

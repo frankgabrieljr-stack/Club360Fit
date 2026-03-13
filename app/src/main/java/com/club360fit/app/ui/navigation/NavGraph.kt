@@ -8,6 +8,7 @@ import androidx.navigation.compose.rememberNavController
 import com.club360fit.app.data.SupabaseClient
 import com.club360fit.app.ui.screens.welcome.WelcomeScreen
 import com.club360fit.app.ui.screens.auth.AuthScreen
+import com.club360fit.app.ui.screens.auth.ResetPasswordScreen
 import com.club360fit.app.ui.screens.client.ClientHomeScreen
 import com.club360fit.app.ui.screens.admin.AdminHomeScreen
 import com.club360fit.app.ui.screens.admin.ClientDetailScreen
@@ -20,13 +21,13 @@ import kotlinx.coroutines.launch
  * Root navigation graph. Welcome -> Auth (Sign In / Create Account) -> Client or Admin home.
  */
 @Composable
-fun Club360FitNavHost() {
+fun Club360FitNavHost(startDestination: String = Routes.WELCOME) {
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
 
     NavHost(
         navController = navController,
-        startDestination = Routes.WELCOME
+        startDestination = startDestination
     ) {
         composable(Routes.WELCOME) {
             WelcomeScreen(
@@ -48,6 +49,20 @@ fun Club360FitNavHost() {
                 onAuthSuccess = { isAdmin -> navController.navigate(if (isAdmin) Routes.ADMIN_HOME else Routes.CLIENT_HOME) { popUpTo(Routes.WELCOME) { inclusive = true } } },
                 onNavigateToSignIn = { navController.navigate(Routes.SIGN_IN) },
                 onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.RESET_PASSWORD) {
+            ResetPasswordScreen(
+                onPasswordResetDone = { isAdmin ->
+                    navController.navigate(if (isAdmin) Routes.ADMIN_HOME else Routes.CLIENT_HOME) {
+                        popUpTo(Routes.WELCOME) { inclusive = true }
+                    }
+                },
+                onCancel = {
+                    navController.navigate(Routes.SIGN_IN) {
+                        popUpTo(Routes.WELCOME) { inclusive = true }
+                    }
+                }
             )
         }
         composable(Routes.CLIENT_HOME) {

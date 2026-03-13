@@ -20,7 +20,11 @@ object SupabaseClient {
         supabaseUrl = SUPABASE_URL,
         supabaseKey = BuildConfig.SUPABASE_ANON_KEY
     ) {
-        install(Auth)
+        install(Auth) {
+            // Used for password reset deep links: club360fit://reset
+            scheme = "club360fit"
+            host = "reset"
+        }
         install(Postgrest)
         install(Storage)
     }
