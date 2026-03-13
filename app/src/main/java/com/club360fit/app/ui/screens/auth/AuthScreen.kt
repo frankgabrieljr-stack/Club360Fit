@@ -11,15 +11,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -28,14 +34,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Icon
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import com.club360fit.app.ui.theme.BurgundyPrimary
 import com.club360fit.app.ui.theme.White
 import com.club360fit.app.ui.utils.fromFeetInches
@@ -123,16 +124,25 @@ fun AuthScreen(
                 )
             )
             if (isSignIn) {
-                TextButton(
+                Spacer(modifier = Modifier.height(4.dp))
+                Button(
                     onClick = { viewModel.sendPasswordResetEmail(state.email) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = BurgundyPrimary
+                    )
                 ) {
-                    Text("Forgot password?", color = BurgundyPrimary)
+                    Text("Forgot password?")
                 }
                 if (state.resetEmailSent) {
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text("Check your email for a reset link.", color = MaterialTheme.colorScheme.primary)
                 }
-                state.resetErrorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                state.resetErrorMessage?.let {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(it, color = MaterialTheme.colorScheme.error)
+                }
             }
 
             if (!isSignIn) {
@@ -228,6 +238,14 @@ fun AuthScreen(
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(value = state.overallGoal, onValueChange = viewModel::updateOverallGoal, label = { Text("What's your overall goal?") }, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = BurgundyPrimary, focusedLabelColor = BurgundyPrimary, cursorColor = BurgundyPrimary))
                 Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("I am an admin", color = MaterialTheme.colorScheme.onSurface)
+                    Switch(checked = state.isAdmin, onCheckedChange = viewModel::updateIsAdmin, colors = androidx.compose.material3.SwitchDefaults.colors(checkedThumbColor = White, checkedTrackColor = BurgundyPrimary))
+                }
             }
 
             state.errorMessage?.let { msg ->
