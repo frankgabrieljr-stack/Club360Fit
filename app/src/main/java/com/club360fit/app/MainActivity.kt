@@ -1,6 +1,7 @@
 package com.club360fit.app
 
 import android.Manifest
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -21,7 +22,8 @@ class MainActivity : ComponentActivity() {
         // Handle possible Supabase password-reset deeplink
         SupabaseClient.client.handleDeeplinks(intent)
 
-        val startDestination = if (intent?.data?.scheme == "club360fit" && intent.data?.host == "reset") {
+        val data = intent?.data
+        val startDestination = if (data?.scheme == "club360fit" && data.host == "reset") {
             Routes.RESET_PASSWORD
         } else {
             Routes.WELCOME
@@ -41,9 +43,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onNewIntent(intent: android.content.Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent == null) return
         setIntent(intent)
         SupabaseClient.client.handleDeeplinks(intent)
     }
