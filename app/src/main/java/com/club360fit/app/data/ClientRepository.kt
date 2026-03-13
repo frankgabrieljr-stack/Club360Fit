@@ -11,7 +11,11 @@ object ClientRepository {
     private val client = SupabaseClient.client
 
     suspend fun getClients(): List<ClientDto> = withContext(Dispatchers.IO) {
-        client.postgrest["clients"].select().decodeList<ClientDto>()
+        // RLS handles which rows are visible
+        client.auth.currentUserOrNull() ?: return@withContext emptyList()
+        client.postgrest["clients"]
+            .select()
+            .decodeList<ClientDto>()
     }
 
     suspend fun getClient(id: String): ClientDto = withContext(Dispatchers.IO) {
@@ -23,12 +27,21 @@ object ClientRepository {
     }
 
     suspend fun upsertClient(dto: ClientDto) = withContext(Dispatchers.IO) {
+        // Upsert the client record. In a real app, you might set the coach_id here.
         client.postgrest["clients"].upsert(dto)
     }
 
-    suspend fun updateUserRole(userId: String, isAdmin: Boolean) = withContext(Dispatchers.IO) {
-        // Note: Updating auth.users metadata usually requires a service_role key or a specific edge function
-        // For this MVP, we'll assume the user is updating their own metadata or we're using a workaround
+    suspend fun deleteClient(id: String) = withContext(Dispatchers.IO) {
+        client.postgrest["clients"].delete {
+            filter { eq("id", id) }
+        }
+    }
+
+    /**
+     * Updates the metadata for the CURRENTLY logged-in user.
+     * Note: Changing other users' roles requires service_role or an Edge Function.
+     */
+    suspend fun updateSelfRole(isAdmin: Boolean) = withContext(Dispatchers.IO) {
         client.auth.updateUser {
             data = buildJsonObject {
                 put("role", JsonPrimitive(if (isAdmin) "admin" else "client"))

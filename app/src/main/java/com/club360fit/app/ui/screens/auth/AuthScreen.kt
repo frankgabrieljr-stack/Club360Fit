@@ -203,14 +203,6 @@ fun AuthScreen(
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(value = state.overallGoal, onValueChange = viewModel::updateOverallGoal, label = { Text("What's your overall goal?") }, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = BurgundyPrimary, focusedLabelColor = BurgundyPrimary, cursorColor = BurgundyPrimary))
                 Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("I am an admin", color = MaterialTheme.colorScheme.onSurface)
-                    Switch(checked = state.isAdmin, onCheckedChange = viewModel::updateIsAdmin, colors = androidx.compose.material3.SwitchDefaults.colors(checkedThumbColor = White, checkedTrackColor = BurgundyPrimary))
-                }
             }
 
             state.errorMessage?.let { msg ->

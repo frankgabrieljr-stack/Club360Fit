@@ -37,4 +37,17 @@ class AdminHomeViewModel : ViewModel() {
             }
         }
     }
+
+    fun deleteClient(id: String) {
+        viewModelScope.launch {
+            try {
+                ClientRepository.deleteClient(id)
+                loadClients()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    error = e.message ?: "Failed to delete client"
+                )
+            }
+        }
+    }
 }

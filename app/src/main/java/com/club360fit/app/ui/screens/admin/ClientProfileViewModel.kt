@@ -105,9 +105,8 @@ class ClientProfileViewModel(
         viewModelScope.launch {
             try {
                 ClientRepository.upsertClient(dto)
-                if (dto.userId.isNotBlank()) {
-                    ClientRepository.updateUserRole(dto.userId, state.isAdmin)
-                }
+                // Note: role management should be done via Supabase Dashboard for now
+                // to avoid the admin user accidentally changing their own role.
                 onDone()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(

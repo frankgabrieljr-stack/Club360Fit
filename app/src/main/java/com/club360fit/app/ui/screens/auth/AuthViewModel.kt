@@ -33,7 +33,6 @@ data class AuthUiState(
     val mealsPerDay: String = "",
     val workoutFrequency: String = "",
     val overallGoal: String = "",
-    val isAdmin: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
 )
@@ -55,7 +54,6 @@ class AuthViewModel : ViewModel() {
     fun updateMealsPerDay(value: String) = _uiState.update { it.copy(mealsPerDay = value) }
     fun updateWorkoutFrequency(value: String) = _uiState.update { it.copy(workoutFrequency = value) }
     fun updateOverallGoal(value: String) = _uiState.update { it.copy(overallGoal = value) }
-    fun updateIsAdmin(value: Boolean) = _uiState.update { it.copy(isAdmin = value) }
     fun clearError() = _uiState.update { it.copy(errorMessage = null) }
 
     fun submit(isSignIn: Boolean, onSuccess: (Boolean) -> Unit) {
@@ -92,7 +90,7 @@ class AuthViewModel : ViewModel() {
                                 put("meals_per_day", JsonPrimitive(state.mealsPerDay))
                                 put("workout_frequency", JsonPrimitive(state.workoutFrequency))
                                 put("overall_goal", JsonPrimitive(state.overallGoal))
-                                put("role", JsonPrimitive(if (state.isAdmin) "admin" else "client"))
+                                put("role", JsonPrimitive("client"))
                             }
                         }
                     }
