@@ -17,6 +17,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Event
@@ -76,7 +77,8 @@ fun ClientProfileScreen(
     onOpenWorkouts: (String) -> Unit,
     onOpenMeals: (String) -> Unit,
     onOpenProgress: (String) -> Unit,
-    onOpenSchedule: (String) -> Unit
+    onOpenSchedule: (String) -> Unit,
+    onOpenPayments: (String) -> Unit
 ) {
     val factory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -227,6 +229,15 @@ fun ClientProfileScreen(
                         onClick = { idForNav?.let(onOpenSchedule) }
                     )
                 }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                WideCategoryTile(
+                    title = "Payments",
+                    subtitle = "Venmo / Zelle settings",
+                    icon = Icons.Default.Payments,
+                    enabled = idForNav != null,
+                    onClick = { idForNav?.let(onOpenPayments) }
+                )
 
                 Spacer(modifier = Modifier.height(24.dp))
 
@@ -430,6 +441,41 @@ private fun CategoryTile(
         ) {
             Icon(icon, contentDescription = null, tint = BurgundyPrimary, modifier = Modifier.size(26.dp))
             Column {
+                Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.height(2.dp))
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WideCategoryTile(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val container = if (enabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+
+    androidx.compose.material3.Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(96.dp)
+            .clickable(enabled = enabled, onClick = onClick),
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = container)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, contentDescription = null, tint = BurgundyPrimary, modifier = Modifier.size(28.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.height(2.dp))
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.ShowChart
@@ -64,6 +65,7 @@ fun ClientHomeScreen(
     onOpenMeals: (String) -> Unit,
     onOpenProgress: (String) -> Unit,
     onOpenSchedule: (String) -> Unit,
+    onOpenPayments: (String) -> Unit,
     viewModel: ClientHomeViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -198,6 +200,55 @@ fun ClientHomeScreen(
                         onClick = { clientId?.let(onOpenSchedule) }
                     )
                 }
+
+                Spacer(Modifier.height(12.dp))
+
+                WideCategoryTile(
+                    title = "Payments",
+                    line1 = "Pay via Venmo or Zelle",
+                    line2 = "Tap to view details / QR",
+                    icon = Icons.Default.Payments,
+                    enabled = clientId != null,
+                    onClick = { clientId?.let(onOpenPayments) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WideCategoryTile(
+    title: String,
+    line1: String,
+    line2: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val container = if (enabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(96.dp)
+            .clickable(enabled = enabled, onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = container)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, contentDescription = null, tint = BurgundyPrimary, modifier = Modifier.size(28.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(2.dp))
+                Text(line1, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                Text(line2, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
