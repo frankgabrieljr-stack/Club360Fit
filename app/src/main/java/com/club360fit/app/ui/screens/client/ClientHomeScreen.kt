@@ -18,10 +18,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Restaurant
-import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -39,6 +40,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -66,12 +68,17 @@ fun ClientHomeScreen(
     onOpenProgress: (String) -> Unit,
     onOpenSchedule: (String) -> Unit,
     onOpenPayments: (String) -> Unit,
+    onOpenMealPhotos: (String) -> Unit,
     viewModel: ClientHomeViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
     val scrollState = rememberScrollState()
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Home, 1 = Gallery
     val clientId = state.clientId
+
+    LaunchedEffect(Unit) {
+        viewModel.loadData()
+    }
 
     Column(
         modifier = Modifier
@@ -86,7 +93,11 @@ fun ClientHomeScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = if (selectedTab == 0) "Client Home" else "Transformation Gallery",
+                text = when {
+                    selectedTab == 1 -> "Transformation Gallery"
+                    selectedTab == 0 && (state.isLoading || state.clientId == null) -> "Welcome"
+                    else -> "Welcome, ${state.welcomeName}"
+                },
                 style = MaterialTheme.typography.headlineLarge,
                 color = BurgundyPrimary
             )
@@ -139,117 +150,142 @@ fun ClientHomeScreen(
                     color = BurgundyPrimary
                 )
                 Spacer(Modifier.height(8.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                    )
-                ) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Next session", style = MaterialTheme.typography.titleMedium, color = BurgundyPrimary)
-                        val next = state.nextSession
-                        if (next == null) {
-                            Text("No upcoming sessions scheduled.", style = MaterialTheme.typography.bodyMedium)
-                        } else {
-                            Text("${next.date.toDisplayDate()} at ${next.time}", style = MaterialTheme.typography.bodyLarge)
-                            if (next.notes.isNotBlank()) Text(next.notes, style = MaterialTheme.typography.bodySmall)
+                if (state.canViewEvents) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        )
+                    ) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Next session", style = MaterialTheme.typography.titleMedium, color = BurgundyPrimary)
+                            val next = state.nextSession
+                            if (next == null) {
+                                Text("No upcoming sessions scheduled.", style = MaterialTheme.typography.bodyMedium)
+                            } else {
+                                Text("${next.date.toDisplayDate()} at ${next.time}", style = MaterialTheme.typography.bodyLarge)
+                                if (next.notes.isNotBlank()) Text(next.notes, style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
+                    Spacer(Modifier.height(16.dp))
                 }
 
-                Spacer(Modifier.height(16.dp))
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    CategoryTile(
-                        title = "Workouts",
-                        line1 = "Current: ${state.workoutPlan?.title ?: "None"}",
-                        line2 = "${state.workoutPlans.size} total plan${if (state.workoutPlans.size == 1) "" else "s"}",
-                        icon = Icons.Default.FitnessCenter,
-                        modifier = Modifier.weight(1f),
-                        enabled = clientId != null,
-                        onClick = { clientId?.let(onOpenWorkouts) }
+                if (state.canViewWorkouts || state.canViewNutrition) {
+                    ClientHomeTwoTileRow(
+                        left = if (state.canViewWorkouts) {
+                            { mod ->
+                                CategoryTile(
+                                    title = "Workouts",
+                                    line1 = "Current: ${state.workoutPlan?.title ?: "None"}",
+                                    line2 = "${state.workoutPlans.size} total plan${if (state.workoutPlans.size == 1) "" else "s"}",
+                                    icon = Icons.Default.FitnessCenter,
+                                    modifier = mod,
+                                    enabled = clientId != null,
+                                    onClick = { clientId?.let(onOpenWorkouts) }
+                                )
+                            }
+                        } else null,
+                        right = if (state.canViewNutrition) {
+                            { mod ->
+                                CategoryTile(
+                                    title = "Meals",
+                                    line1 = "Current: ${state.mealPlan?.title ?: "None"}",
+                                    line2 = "${state.mealPlans.size} total plan${if (state.mealPlans.size == 1) "" else "s"}",
+                                    icon = Icons.Default.Restaurant,
+                                    modifier = mod,
+                                    enabled = clientId != null,
+                                    onClick = { clientId?.let(onOpenMeals) }
+                                )
+                            }
+                        } else null
                     )
-                    CategoryTile(
-                        title = "Meals",
-                        line1 = "Current: ${state.mealPlan?.title ?: "None"}",
-                        line2 = "${state.mealPlans.size} total plan${if (state.mealPlans.size == 1) "" else "s"}",
-                        icon = Icons.Default.Restaurant,
-                        modifier = Modifier.weight(1f),
-                        enabled = clientId != null,
-                        onClick = { clientId?.let(onOpenMeals) }
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    CategoryTile(
-                        title = "Progress",
-                        line1 = "Last: ${state.progressCheckIns.firstOrNull()?.checkInDate?.toDisplayDate() ?: "None"}",
-                        line2 = "${state.progressCheckIns.size} log${if (state.progressCheckIns.size == 1) "" else "s"}",
-                        icon = Icons.Default.ShowChart,
-                        modifier = Modifier.weight(1f),
-                        enabled = clientId != null,
-                        onClick = { clientId?.let(onOpenProgress) }
-                    )
-                    CategoryTile(
-                        title = "Schedule",
-                        line1 = state.nextSession?.let { "Next: ${it.date.toDisplayDate()} ${it.time}".trim() } ?: "Next: None",
-                        line2 = "${state.upcomingSessions.size} upcoming",
-                        icon = Icons.Default.Event,
-                        modifier = Modifier.weight(1f),
-                        enabled = clientId != null,
-                        onClick = { clientId?.let(onOpenSchedule) }
-                    )
+                    Spacer(Modifier.height(12.dp))
                 }
 
-                Spacer(Modifier.height(12.dp))
-
-                WideCategoryTile(
-                    title = "Payments",
-                    line1 = "Pay via Venmo or Zelle",
-                    line2 = "Tap to view details / QR",
-                    icon = Icons.Default.Payments,
-                    enabled = clientId != null,
-                    onClick = { clientId?.let(onOpenPayments) }
+                // Progress always; Schedule only if club events are enabled for this client
+                ClientHomeTwoTileRow(
+                    left = { mod ->
+                        CategoryTile(
+                            title = "Progress",
+                            line1 = "Last: ${state.progressCheckIns.firstOrNull()?.checkInDate?.toDisplayDate() ?: "None"}",
+                            line2 = "${state.progressCheckIns.size} log${if (state.progressCheckIns.size == 1) "" else "s"}",
+                            icon = Icons.Default.TrendingUp,
+                            modifier = mod,
+                            enabled = clientId != null,
+                            onClick = { clientId?.let(onOpenProgress) }
+                        )
+                    },
+                        right = if (state.canViewEvents) {
+                            { mod ->
+                                CategoryTile(
+                                    title = "Schedule",
+                                    line1 = state.nextSession?.let { n -> "Next: ${n.date.toDisplayDate()} ${n.time}".trim() } ?: "Next: None",
+                                    line2 = "${state.upcomingSessions.size} upcoming",
+                                    icon = Icons.Default.Event,
+                                    modifier = mod,
+                                    enabled = clientId != null,
+                                    onClick = { clientId?.let(onOpenSchedule) }
+                                )
+                            }
+                        } else null
                 )
+                Spacer(Modifier.height(12.dp))
+
+                if (state.canViewNutrition || state.canViewPayments) {
+                    ClientHomeTwoTileRow(
+                        left = if (state.canViewNutrition) {
+                            { mod ->
+                                CategoryTile(
+                                    title = "Meal photos",
+                                    line1 = "Log meals for coach",
+                                    line2 = "Camera or gallery",
+                                    icon = Icons.Default.CameraAlt,
+                                    modifier = mod,
+                                    enabled = clientId != null,
+                                    onClick = { clientId?.let(onOpenMealPhotos) }
+                                )
+                            }
+                        } else null,
+                        right = if (state.canViewPayments) {
+                            { mod ->
+                                CategoryTile(
+                                    title = "Payments",
+                                    line1 = "Venmo or Zelle",
+                                    line2 = "View details / QR",
+                                    icon = Icons.Default.Payments,
+                                    modifier = mod,
+                                    enabled = clientId != null,
+                                    onClick = { clientId?.let(onOpenPayments) }
+                                )
+                            }
+                        } else null
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun WideCategoryTile(
-    title: String,
-    line1: String,
-    line2: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    enabled: Boolean = true,
-    onClick: () -> Unit
+private fun ClientHomeTwoTileRow(
+    left: (@Composable (Modifier) -> Unit)?,
+    right: (@Composable (Modifier) -> Unit)?
 ) {
-    val container = if (enabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(96.dp)
-            .clickable(enabled = enabled, onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = container)
+    if (left == null && right == null) return
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(icon, contentDescription = null, tint = BurgundyPrimary, modifier = Modifier.size(28.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(2.dp))
-                Text(line1, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(2.dp))
-                Text(line2, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+        if (left != null) {
+            left(Modifier.weight(1f))
+        } else {
+            Spacer(Modifier.weight(1f))
+        }
+        if (right != null) {
+            right(Modifier.weight(1f))
+        } else {
+            Spacer(Modifier.weight(1f))
         }
     }
 }

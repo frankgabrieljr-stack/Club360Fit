@@ -44,6 +44,7 @@ fun AdminHomeScreen(
     viewModel: AdminHomeViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    val scheduleViewModel: ScheduleViewModel = viewModel()
     val tabs = listOf("Overview", "Clients", "Schedule", "Gallery")
     var selectedTab by remember { mutableIntStateOf(1) } // default to Clients
 
@@ -122,13 +123,21 @@ fun AdminHomeScreen(
             }
 
             when (selectedTab) {
-                0 -> OverviewTab(clients = state.clients)
+                0 -> OverviewTab(
+                    clients = state.clients,
+                    scheduleViewModel = scheduleViewModel,
+                    onGoToClients = { selectedTab = 1 },
+                    onGoToSchedule = { focusDate ->
+                        focusDate?.let { scheduleViewModel.jumpToDate(it) }
+                        selectedTab = 2
+                    }
+                )
                 1 -> ClientsTab(
                     viewModel = viewModel,
                     onOpenDetails = onOpenClientDetails,
                     onOpenProfile = onOpenClientProfile
                 )
-                2 -> ScheduleTab(clients = state.clients)
+                2 -> ScheduleTab(clients = state.clients, viewModel = scheduleViewModel)
             }
         }
     }
@@ -138,7 +147,9 @@ fun AdminHomeScreen(
 @Composable
 fun OverviewTab(
     clients: List<ClientDto>,
-    scheduleViewModel: ScheduleViewModel = viewModel()
+    scheduleViewModel: ScheduleViewModel,
+    onGoToClients: () -> Unit,
+    onGoToSchedule: (focusDate: LocalDate?) -> Unit
 ) {
     val scheduleState by scheduleViewModel.uiState.collectAsState()
     val events = scheduleState.events
@@ -151,6 +162,15 @@ fun OverviewTab(
     val sessionsThisWeek = events.count { !it.date.isBefore(startOfWeek) && !it.date.isAfter(endOfWeek) }
     val completedThisWeek = events.count { it.isCompleted && !it.date.isBefore(startOfWeek) && !it.date.isAfter(endOfWeek) }
     val pastDueSessions = events.count { !it.isCompleted && it.date.isBefore(today) }
+
+    val weekSessionEvents = events.filter { !it.date.isBefore(startOfWeek) && !it.date.isAfter(endOfWeek) }
+    val firstSessionDateThisWeek = weekSessionEvents.minByOrNull { it.date }?.date
+    val completedWeekEvents = events.filter {
+        it.isCompleted && !it.date.isBefore(startOfWeek) && !it.date.isAfter(endOfWeek)
+    }
+    val firstCompletedDateThisWeek = completedWeekEvents.minByOrNull { it.date }?.date
+    val pastDueEvents = events.filter { !it.isCompleted && it.date.isBefore(today) }
+    val earliestPastDueDate = pastDueEvents.minByOrNull { it.date }?.date
 
     val todayEvents = events
         .filter { it.date == today }
@@ -183,12 +203,18 @@ fun OverviewTab(
             OverviewStatCard(
                 title = "Active clients",
                 value = activeClients.toString(),
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                onClick = onGoToClients
             )
             OverviewStatCard(
                 title = "Sessions this week",
                 value = sessionsThisWeek.toString(),
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    val d = firstSessionDateThisWeek
+                        ?: if (!today.isBefore(startOfWeek) && !today.isAfter(endOfWeek)) today else startOfWeek
+                    onGoToSchedule(d)
+                }
             )
         }
         Row(
@@ -198,13 +224,21 @@ fun OverviewTab(
             OverviewStatCard(
                 title = "Completed this week",
                 value = completedThisWeek.toString(),
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    val d = firstCompletedDateThisWeek ?: today.coerceIn(startOfWeek, endOfWeek)
+                    onGoToSchedule(d)
+                }
             )
             OverviewStatCard(
                 title = "Past-due sessions",
                 value = pastDueSessions.toString(),
                 modifier = Modifier.weight(1f),
-                emphasize = pastDueSessions > 0
+                emphasize = pastDueSessions > 0,
+                onClick = {
+                    val d = earliestPastDueDate ?: today
+                    onGoToSchedule(d)
+                }
             )
         }
 
@@ -303,10 +337,13 @@ private fun OverviewStatCard(
     title: String,
     value: String,
     modifier: Modifier = Modifier,
-    emphasize: Boolean = false
+    emphasize: Boolean = false,
+    onClick: (() -> Unit)? = null
 ) {
     Card(
-        modifier = modifier,
+        modifier = modifier.then(
+            if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+        ),
         colors = CardDefaults.cardColors(
             containerColor = if (emphasize) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)

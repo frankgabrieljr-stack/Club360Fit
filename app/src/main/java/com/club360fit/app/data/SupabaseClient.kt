@@ -16,6 +16,8 @@ object SupabaseClient {
     private const val SUPABASE_URL = "https://mjkrokpctcieahxtxvxq.supabase.co"
     const val AVATARS_BUCKET = "avatars"
     const val TRANSFORMATIONS_BUCKET = "transformations"
+    /** Daily meal photos (client uploads; coach reviews). Create in Supabase Storage. */
+    const val MEAL_PHOTOS_BUCKET = "meal-photos"
 
     val client = createSupabaseClient(
         supabaseUrl = SUPABASE_URL,

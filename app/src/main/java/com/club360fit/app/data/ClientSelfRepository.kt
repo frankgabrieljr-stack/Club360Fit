@@ -6,7 +6,8 @@ import io.github.jan.supabase.postgrest.postgrest
 object ClientSelfRepository {
     private val client = SupabaseClient.client
 
-    suspend fun getOwnClientId(): String? {
+    /** Current user's client profile row, if any. */
+    suspend fun getOwnClient(): ClientDto? {
         val uid = client.auth.currentUserOrNull()?.id ?: return null
         return client.postgrest["clients"]
             .select {
@@ -15,6 +16,7 @@ object ClientSelfRepository {
             }
             .decodeList<ClientDto>()
             .firstOrNull()
-            ?.id
     }
+
+    suspend fun getOwnClientId(): String? = getOwnClient()?.id
 }

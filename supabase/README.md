@@ -28,3 +28,12 @@ alter table public.clients add column if not exists coach_id uuid references aut
 ```
 
 Then add the RLS policies from the migration file.
+
+## Payments (coach + client)
+
+Run in order (after `clients` exists):
+
+- `migrations/008_payment_history.sql` — `client_payment_settings` upcoming due + `payment_records` + RLS  
+- `migrations/009_payment_confirmations.sql` — `payment_confirmations` (client “I paid” → coach approve → `payment_records`) + RLS  
+
+Clients submit confirmations in the app; coaches review under **Client payment confirmations** and **Approve** to add an entry to logged payment history.

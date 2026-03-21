@@ -67,6 +67,12 @@ class ScheduleViewModel : ViewModel() {
         _currentMonth.value = YearMonth.now()
     }
 
+    /** Opens the calendar on the given month and selects that day (used from Overview KPI tiles). */
+    fun jumpToDate(date: LocalDate) {
+        _currentMonth.value = YearMonth.from(date)
+        _selectedDate.value = date
+    }
+
     fun selectDate(date: LocalDate?) {
         _selectedDate.value = date
     }

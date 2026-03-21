@@ -10,7 +10,10 @@ import com.club360fit.app.data.ProgressRepository
 import com.club360fit.app.data.ScheduleEvent
 import com.club360fit.app.data.ScheduleRepository
 import com.club360fit.app.data.WorkoutPlanDto
+import com.club360fit.app.data.SupabaseClient
 import com.club360fit.app.data.WorkoutPlanRepository
+import com.club360fit.app.data.ClientDto
+import io.github.jan.supabase.gotrue.auth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -19,7 +22,13 @@ import java.time.LocalDate
 data class ClientHomeUiState(
     val isLoading: Boolean = true,
     val error: String? = null,
+    /** First name or email local-part for "Welcome, …" */
+    val welcomeName: String = "there",
     val clientId: String? = null,
+    val canViewNutrition: Boolean = true,
+    val canViewWorkouts: Boolean = true,
+    val canViewPayments: Boolean = true,
+    val canViewEvents: Boolean = true,
     val nextSession: ScheduleEvent? = null,
     val upcomingSessions: List<ScheduleEvent> = emptyList(),
     val workoutPlan: WorkoutPlanDto? = null,
@@ -33,15 +42,11 @@ class ClientHomeViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(ClientHomeUiState())
     val uiState: StateFlow<ClientHomeUiState> = _uiState
 
-    init {
-        loadData()
-    }
-
     fun loadData() {
         viewModelScope.launch {
             try {
                 _uiState.value = ClientHomeUiState(isLoading = true)
-                val clientId = ClientSelfRepository.getOwnClientId()
+                val client = ClientSelfRepository.getOwnClient()
                     ?: run {
                         _uiState.value = ClientHomeUiState(
                             isLoading = false,
@@ -49,6 +54,16 @@ class ClientHomeViewModel : ViewModel() {
                         )
                         return@launch
                     }
+                val clientId = client.id
+                    ?: run {
+                        _uiState.value = ClientHomeUiState(
+                            isLoading = false,
+                            error = "No client profile found."
+                        )
+                        return@launch
+                    }
+                val email = SupabaseClient.client.auth.currentUserOrNull()?.email
+                val welcomeName = welcomeNameFrom(client, email)
                 
                 // Load schedule events attached to this client
                 val events = ScheduleRepository.getEventsForClient(clientId)
@@ -66,7 +81,12 @@ class ClientHomeViewModel : ViewModel() {
                 
                 _uiState.value = ClientHomeUiState(
                     isLoading = false,
+                    welcomeName = welcomeName,
                     clientId = clientId,
+                    canViewNutrition = client.canViewNutrition,
+                    canViewWorkouts = client.canViewWorkouts,
+                    canViewPayments = client.canViewPayments,
+                    canViewEvents = client.canViewEvents,
                     nextSession = next,
                     upcomingSessions = upcoming,
                     workoutPlan = workout,
@@ -82,5 +102,14 @@ class ClientHomeViewModel : ViewModel() {
                 )
             }
         }
+    }
+
+    private fun welcomeNameFrom(client: ClientDto, email: String?): String {
+        val full = client.fullName?.trim()
+        if (!full.isNullOrBlank()) {
+            return full.split(Regex("\\s+")).first()
+        }
+        val local = email?.substringBefore("@")?.trim()
+        return if (!local.isNullOrBlank()) local else "there"
     }
 }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.ShowChart
@@ -78,7 +79,8 @@ fun ClientProfileScreen(
     onOpenMeals: (String) -> Unit,
     onOpenProgress: (String) -> Unit,
     onOpenSchedule: (String) -> Unit,
-    onOpenPayments: (String) -> Unit
+    onOpenPayments: (String) -> Unit,
+    onOpenMealPhotos: (String) -> Unit
 ) {
     val factory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -239,6 +241,16 @@ fun ClientProfileScreen(
                     onClick = { idForNav?.let(onOpenPayments) }
                 )
 
+                Spacer(modifier = Modifier.height(12.dp))
+
+                WideCategoryTile(
+                    title = "Meal photos",
+                    subtitle = "Daily meal pics & notes",
+                    icon = Icons.Default.CameraAlt,
+                    enabled = idForNav != null,
+                    onClick = { idForNav?.let(onOpenMealPhotos) }
+                )
+
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // Editable form
@@ -313,10 +325,9 @@ fun ClientProfileScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                OutlinedTextField(
-                    value = state.client.goal ?: "",
-                    onValueChange = viewModel::updateGoal,
-                    label = { Text("Goal") },
+                ClientGoalDropdown(
+                    selectedGoal = state.client.goal,
+                    onGoalSelected = viewModel::updateGoal,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(24.dp))
@@ -326,28 +337,32 @@ fun ClientProfileScreen(
                     color = BurgundyPrimary
                 )
                 Text(
-                    "Control what this client can see in the app (meals, workouts, payments, events).",
+                    "Turn sections off to hide those tiles on the client’s home screen (they can still sign in).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 PrivSwitchRow(
                     label = "Nutrition plans",
+                    subtitle = "Meals & meal photos tiles.",
                     checked = state.client.canViewNutrition,
                     onChecked = { viewModel.updatePrivilege(nutrition = it) }
                 )
                 PrivSwitchRow(
                     label = "Workout programs",
+                    subtitle = "Workouts tile.",
                     checked = state.client.canViewWorkouts,
                     onChecked = { viewModel.updatePrivilege(workouts = it) }
                 )
                 PrivSwitchRow(
                     label = "Payments",
+                    subtitle = "Venmo / Zelle tile.",
                     checked = state.client.canViewPayments,
                     onChecked = { viewModel.updatePrivilege(payments = it) }
                 )
                 PrivSwitchRow(
                     label = "Run club events",
+                    subtitle = "Next session card, Schedule tile, and schedule data.",
                     checked = state.client.canViewEvents,
                     onChecked = { viewModel.updatePrivilege(events = it) }
                 )
@@ -396,19 +411,29 @@ fun ClientProfileScreen(
 @Composable
 private fun PrivSwitchRow(
     label: String,
+    subtitle: String? = null,
     checked: Boolean,
     onChecked: (Boolean) -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, style = MaterialTheme.typography.bodyLarge)
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            subtitle?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
         Switch(
-            checked = checked, 
+            checked = checked,
             onCheckedChange = onChecked,
             colors = SwitchDefaults.colors(checkedThumbColor = BurgundyPrimary)
         )

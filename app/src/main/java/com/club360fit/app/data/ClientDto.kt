@@ -1,5 +1,7 @@
 package com.club360fit.app.data
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.EncodeDefault.Mode
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -34,15 +36,20 @@ data class ClientDto(
 
     val goal: String? = null,
 
+    /** Always encode so `false` is sent on upsert (kotlinx default skips false → DB never updated). */
+    @EncodeDefault(Mode.ALWAYS)
     @SerialName("can_view_nutrition")
     val canViewNutrition: Boolean = false,
 
+    @EncodeDefault(Mode.ALWAYS)
     @SerialName("can_view_workouts")
     val canViewWorkouts: Boolean = false,
 
+    @EncodeDefault(Mode.ALWAYS)
     @SerialName("can_view_payments")
     val canViewPayments: Boolean = false,
 
+    @EncodeDefault(Mode.ALWAYS)
     @SerialName("can_view_events")
     val canViewEvents: Boolean = false,
 

@@ -1,6 +1,5 @@
 package com.club360fit.app.ui.screens.gallery
 
-import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -55,6 +54,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.club360fit.app.data.TransformationImage
 import com.club360fit.app.ui.theme.BurgundyPrimary
+import com.club360fit.app.ui.utils.readBytesFromUri
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -297,7 +297,4 @@ private fun ThumbnailWithDelete(
         }
     }
 }
-
-private fun readBytesFromUri(context: Context, uri: Uri): ByteArray? =
-    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
 
