@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -62,7 +64,10 @@ import com.club360fit.app.ui.utils.readBytesFromUri
 import com.club360fit.app.ui.utils.toDisplayDate
 import kotlinx.coroutines.launch
 import java.io.File
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -395,5 +400,41 @@ private fun MealPhotoRow(
                 .fillMaxWidth()
                 .height(220.dp)
         )
+        if (!item.coachFeedback.isNullOrBlank()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                )
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Coach feedback",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = BurgundyPrimary
+                    )
+                    Text(
+                        item.coachFeedback.orEmpty(),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    item.coachFeedbackUpdatedAt?.let { iso ->
+                        Text(
+                            formatCoachFeedbackTimeForClient(iso),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
     }
 }
+
+private fun formatCoachFeedbackTimeForClient(iso: String): String =
+    try {
+        val instant = Instant.parse(iso)
+        val z = instant.atZone(ZoneId.systemDefault())
+        DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a").format(z)
+    } catch (_: Exception) {
+        iso
+    }

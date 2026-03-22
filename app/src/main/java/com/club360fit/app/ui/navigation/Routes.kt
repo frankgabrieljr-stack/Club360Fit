@@ -23,6 +23,8 @@ object Routes {
     const val MY_SCHEDULE = "my_schedule"
     const val MY_PAYMENTS = "my_payments"
     const val MY_MEAL_PHOTOS = "my_meal_photos"
+    const val MY_HABITS = "my_habits"
+    const val MY_NOTIFICATIONS = "my_notifications"
     const val MY_PROFILE = "my_profile"
     const val RESET_PASSWORD = "reset_password"
     const val TRANSFORMATION_GALLERY = "transformation_gallery"

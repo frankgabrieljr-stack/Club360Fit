@@ -11,7 +11,9 @@ import com.club360fit.app.ui.screens.auth.AuthScreen
 import com.club360fit.app.ui.screens.auth.ResetPasswordScreen
 import com.club360fit.app.ui.screens.client.ClientHomeScreen
 import com.club360fit.app.ui.screens.client.MyMealsScreen
+import com.club360fit.app.ui.screens.client.MyDailyHabitsScreen
 import com.club360fit.app.ui.screens.client.MyMealPhotosScreen
+import com.club360fit.app.ui.screens.client.MyNotificationsScreen
 import com.club360fit.app.ui.screens.client.MyPaymentsScreen
 import com.club360fit.app.ui.screens.client.MyProgressScreen
 import com.club360fit.app.ui.screens.client.MyScheduleScreen
@@ -87,7 +89,8 @@ fun Club360FitNavHost(startDestination: String = Routes.WELCOME) {
                 onOpenProgress = { id -> navController.navigate("${Routes.MY_PROGRESS}/$id") },
                 onOpenSchedule = { id -> navController.navigate("${Routes.MY_SCHEDULE}/$id") },
                 onOpenPayments = { id -> navController.navigate("${Routes.MY_PAYMENTS}/$id") },
-                onOpenMealPhotos = { id -> navController.navigate("${Routes.MY_MEAL_PHOTOS}/$id") }
+                onOpenHabits = { id -> navController.navigate("${Routes.MY_HABITS}/$id") },
+                onOpenNotifications = { id -> navController.navigate("${Routes.MY_NOTIFICATIONS}/$id") }
             )
         }
         composable("${Routes.MY_WORKOUTS}/{clientId}") { backStackEntry ->
@@ -96,7 +99,11 @@ fun Club360FitNavHost(startDestination: String = Routes.WELCOME) {
         }
         composable("${Routes.MY_MEALS}/{clientId}") { backStackEntry ->
             val clientId = backStackEntry.arguments?.getString("clientId") ?: return@composable
-            MyMealsScreen(clientId = clientId, onBack = { navController.popBackStack() })
+            MyMealsScreen(
+                clientId = clientId,
+                onBack = { navController.popBackStack() },
+                onOpenMealPhotos = { navController.navigate("${Routes.MY_MEAL_PHOTOS}/$clientId") }
+            )
         }
         composable("${Routes.MY_PROGRESS}/{clientId}") { backStackEntry ->
             val clientId = backStackEntry.arguments?.getString("clientId") ?: return@composable
@@ -113,6 +120,14 @@ fun Club360FitNavHost(startDestination: String = Routes.WELCOME) {
         composable("${Routes.MY_MEAL_PHOTOS}/{clientId}") { backStackEntry ->
             val clientId = backStackEntry.arguments?.getString("clientId") ?: return@composable
             MyMealPhotosScreen(clientId = clientId, onBack = { navController.popBackStack() })
+        }
+        composable("${Routes.MY_HABITS}/{clientId}") { backStackEntry ->
+            val clientId = backStackEntry.arguments?.getString("clientId") ?: return@composable
+            MyDailyHabitsScreen(clientId = clientId, onBack = { navController.popBackStack() })
+        }
+        composable("${Routes.MY_NOTIFICATIONS}/{clientId}") { backStackEntry ->
+            val clientId = backStackEntry.arguments?.getString("clientId") ?: return@composable
+            MyNotificationsScreen(clientId = clientId, onBack = { navController.popBackStack() })
         }
         composable(Routes.ADMIN_HOME) {
             AdminHomeScreen(
@@ -142,8 +157,7 @@ fun Club360FitNavHost(startDestination: String = Routes.WELCOME) {
                 onOpenMeals = { id -> navController.navigate("${Routes.CLIENT_MEALS}/$id") },
                 onOpenProgress = { id -> navController.navigate("${Routes.CLIENT_PROGRESS}/$id") },
                 onOpenSchedule = { id -> navController.navigate("${Routes.CLIENT_SCHEDULE}/$id") },
-                onOpenPayments = { id -> navController.navigate("${Routes.CLIENT_PAYMENTS}/$id") },
-                onOpenMealPhotos = { id -> navController.navigate("${Routes.CLIENT_MEAL_PHOTOS}/$id") }
+                onOpenPayments = { id -> navController.navigate("${Routes.CLIENT_PAYMENTS}/$id") }
             )
         }
         composable("${Routes.CLIENT_WORKOUTS}/{clientId}") { backStackEntry ->
@@ -157,7 +171,8 @@ fun Club360FitNavHost(startDestination: String = Routes.WELCOME) {
             val clientId = backStackEntry.arguments?.getString("clientId") ?: return@composable
             ClientMealsScreen(
                 clientId = clientId,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onOpenMealPhotos = { navController.navigate("${Routes.CLIENT_MEAL_PHOTOS}/$clientId") }
             )
         }
         composable("${Routes.CLIENT_PROGRESS}/{clientId}") { backStackEntry ->

@@ -37,3 +37,6 @@ Run in order (after `clients` exists):
 - `migrations/009_payment_confirmations.sql` — `payment_confirmations` (client “I paid” → coach approve → `payment_records`) + RLS  
 
 Clients submit confirmations in the app; coaches review under **Client payment confirmations** and **Approve** to add an entry to logged payment history.
+
+- `migrations/010_adherence_retention.sql` — daily habits, workout session logs, in-app notifications, `expected_sessions` on `workout_plans`
+- `migrations/011_client_read_schedule_events.sql` — clients can `SELECT` `schedule_events` where `client_id` is their profile (needed for client schedule + adherence nudges)

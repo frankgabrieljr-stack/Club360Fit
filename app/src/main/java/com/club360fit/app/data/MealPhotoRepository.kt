@@ -5,6 +5,7 @@ import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.storage.storage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.Instant
 import java.time.LocalDate
 
 object MealPhotoRepository {
@@ -57,6 +58,37 @@ object MealPhotoRepository {
             }
             .decodeSingle<MealPhotoLogDto>()
     }
+
+    /** Coach updates feedback text; clears both columns when [feedback] is blank. */
+    suspend fun updateCoachFeedback(clientId: String, logId: String, feedback: String) =
+        withContext(Dispatchers.IO) {
+            val trimmed = feedback.trim()
+            if (trimmed.isEmpty()) {
+                client.postgrest["meal_photo_logs"].update(
+                    {
+                        set("coach_feedback", null as String?)
+                        set("coach_feedback_updated_at", null as String?)
+                    }
+                ) {
+                    filter {
+                        eq("id", logId)
+                        eq("client_id", clientId)
+                    }
+                }
+            } else {
+                client.postgrest["meal_photo_logs"].update(
+                    {
+                        set("coach_feedback", trimmed)
+                        set("coach_feedback_updated_at", Instant.now().toString())
+                    }
+                ) {
+                    filter {
+                        eq("id", logId)
+                        eq("client_id", clientId)
+                    }
+                }
+            }
+        }
 
     suspend fun deleteOwn(clientId: String, logId: String) = withContext(Dispatchers.IO) {
         val existing = client.postgrest["meal_photo_logs"]

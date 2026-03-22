@@ -3,6 +3,7 @@ package com.club360fit.app.ui.screens.client
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,12 +16,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -34,10 +37,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.club360fit.app.data.AdherenceMetricsCalculator
-import com.club360fit.app.data.WorkoutPlanDto
-import com.club360fit.app.data.WorkoutPlanRepository
-import com.club360fit.app.data.WorkoutSessionLogRepository
+import com.club360fit.app.data.DailyHabitLogDto
+import com.club360fit.app.data.DailyHabitRepository
 import com.club360fit.app.ui.theme.BurgundyPrimary
 import com.club360fit.app.ui.utils.toDisplayDate
 import kotlinx.coroutines.launch
@@ -45,38 +46,29 @@ import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MyWorkoutsScreen(
+fun MyDailyHabitsScreen(
     clientId: String,
     onBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    var isLoading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var plans by remember { mutableStateOf<List<WorkoutPlanDto>>(emptyList()) }
-    var weekLogged by remember { mutableStateOf(0) }
-    var weekExpected by remember { mutableStateOf(4) }
-    var isLogging by remember { mutableStateOf(false) }
     val today = LocalDate.now()
-    val weekStart = AdherenceMetricsCalculator.weekStartSunday(today)
-
-    fun refreshWeek() {
-        scope.launch {
-            try {
-                weekLogged = WorkoutSessionLogRepository.countForWeek(clientId, weekStart)
-                weekExpected = WorkoutPlanRepository.getCurrentPlan(clientId)?.expectedSessions?.coerceIn(1, 14) ?: 4
-            } catch (_: Exception) { /* ignore */ }
-        }
-    }
+    var waterDone by remember { mutableStateOf(false) }
+    var stepsText by remember { mutableStateOf("") }
+    var sleepText by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(true) }
+    var isSaving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(clientId) {
         isLoading = true
-        error = null
         try {
-            plans = WorkoutPlanRepository.getAllPlans(clientId)
-            weekLogged = WorkoutSessionLogRepository.countForWeek(clientId, weekStart)
-            weekExpected = WorkoutPlanRepository.getCurrentPlan(clientId)?.expectedSessions?.coerceIn(1, 14) ?: 4
+            DailyHabitRepository.getForDay(clientId, today)?.let { h ->
+                waterDone = h.waterDone
+                stepsText = h.steps?.toString() ?: ""
+                sleepText = h.sleepHours?.toString() ?: ""
+            }
         } catch (e: Exception) {
-            error = e.message ?: "Failed to load workout plans"
+            error = e.message
         } finally {
             isLoading = false
         }
@@ -85,11 +77,11 @@ fun MyWorkoutsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("My Workouts") },
+                title = { Text("Daily habits") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
                             tint = BurgundyPrimary
                         )
@@ -113,64 +105,78 @@ fun MyWorkoutsScreen(
                     .padding(padding)
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-
-                Text("This week", style = MaterialTheme.typography.titleSmall, color = BurgundyPrimary)
-                val pct = if (weekExpected <= 0) 0f else (weekLogged.toFloat() / weekExpected.toFloat()).coerceIn(0f, 1f)
-                LinearProgressIndicator(
-                    progress = pct,
-                    modifier = Modifier.fillMaxWidth(),
-                    color = BurgundyPrimary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                Text(
+                    today.toDisplayDate(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = BurgundyPrimary
                 )
                 Text(
-                    "$weekLogged / $weekExpected sessions · ${(pct * 100).toInt()}%",
+                    "Log once per day. Any entry counts toward your streak.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Water goal met", style = MaterialTheme.typography.bodyLarge)
+                    Switch(
+                        checked = waterDone,
+                        onCheckedChange = { waterDone = it },
+                        colors = SwitchDefaults.colors(checkedThumbColor = BurgundyPrimary)
+                    )
+                }
+                OutlinedTextField(
+                    value = stepsText,
+                    onValueChange = { stepsText = it.filter { ch -> ch.isDigit() } },
+                    label = { Text("Steps (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = sleepText,
+                    onValueChange = { sleepText = it },
+                    label = { Text("Sleep (hours, optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("e.g. 7.5") }
                 )
                 Button(
                     onClick = {
                         scope.launch {
-                            isLogging = true
+                            isSaving = true
+                            error = null
                             try {
-                                WorkoutSessionLogRepository.logSession(clientId, today)
-                                refreshWeek()
+                                val steps = stepsText.toIntOrNull()
+                                val sleep = sleepText.toDoubleOrNull()
+                                DailyHabitRepository.upsertDay(
+                                    DailyHabitLogDto(
+                                        clientId = clientId,
+                                        logDate = today,
+                                        waterDone = waterDone,
+                                        steps = steps,
+                                        sleepHours = sleep
+                                    )
+                                )
+                            } catch (e: Exception) {
+                                error = e.message
                             } finally {
-                                isLogging = false
+                                isSaving = false
                             }
                         }
                     },
-                    enabled = !isLogging,
+                    enabled = !isSaving,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = BurgundyPrimary)
                 ) {
-                    Text(if (isLogging) "Saving…" else "Log a workout today")
+                    Text(if (isSaving) "Saving…" else "Save today")
                 }
-                Spacer(Modifier.height(12.dp))
-
-                if (plans.isEmpty()) {
-                    Text(
-                        text = "No workout plans assigned yet.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else {
-                    plans.forEach { plan ->
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Text(
-                                text = "Week of ${plan.weekStart.toDisplayDate()} – ${plan.title}",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = BurgundyPrimary
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Text(plan.planText, style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                }
+                Spacer(Modifier.height(8.dp))
             }
         }
     }
 }
-

@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.club360fit.app.data.AdherenceMetricsRepository
 import com.club360fit.app.data.ClientDto
 import com.club360fit.app.data.ScheduleEvent
 import com.club360fit.app.ui.theme.BurgundyPrimary
@@ -151,6 +152,18 @@ fun OverviewTab(
     onGoToClients: () -> Unit,
     onGoToSchedule: (focusDate: LocalDate?) -> Unit
 ) {
+    var complianceByClient by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    LaunchedEffect(clients.map { it.id }.toString()) {
+        val map = mutableMapOf<String, Int>()
+        for (c in clients) {
+            val id = c.id ?: continue
+            runCatching { AdherenceMetricsRepository.loadSnapshotForCoachView(id) }
+                .getOrNull()
+                ?.let { map[id] = it.weeklyComplianceScore }
+        }
+        complianceByClient = map
+    }
+
     val scheduleState by scheduleViewModel.uiState.collectAsState()
     val events = scheduleState.events
     val today = LocalDate.now()
@@ -181,7 +194,9 @@ fun OverviewTab(
     val atRiskClients = clients.filter { client ->
         val id = client.id ?: return@filter false
         val recentEvents = events.any { it.clientId == id && !it.date.isBefore(twoWeeksAgo) }
-        !recentEvents
+        val noSessions = !recentEvents
+        val lowCompliance = (complianceByClient[id] ?: 100) < 40
+        noSessions || lowCompliance
     }
 
     Column(
@@ -319,8 +334,19 @@ fun OverviewTab(
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.onErrorContainer
                             )
+                            val cid = client.id
+                            val score = cid?.let { complianceByClient[it] } ?: 100
+                            val hasRecent = cid != null &&
+                                events.any { it.clientId == cid && !it.date.isBefore(twoWeeksAgo) }
+                            val reason = buildString {
+                                if (!hasRecent) append("No sessions in the last 14 days.")
+                                if (score < 40) {
+                                    if (isNotEmpty()) append(" ")
+                                    append("Compliance under 40%.")
+                                }
+                            }.ifBlank { "Needs attention." }
                             Text(
-                                text = "No sessions in the last 14 days.",
+                                text = reason,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onErrorContainer
                             )

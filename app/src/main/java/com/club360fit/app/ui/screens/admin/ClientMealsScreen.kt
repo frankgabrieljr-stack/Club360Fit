@@ -6,18 +6,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -43,7 +46,8 @@ import com.club360fit.app.ui.utils.toDisplayDate
 @Composable
 fun ClientMealsScreen(
     clientId: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenMealPhotos: () -> Unit
 ) {
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -97,6 +101,19 @@ fun ClientMealsScreen(
                 }
             } else {
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+
+                OutlinedButton(
+                    onClick = onOpenMealPhotos,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CameraAlt,
+                        contentDescription = null,
+                        tint = BurgundyPrimary
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("View meal photos", color = BurgundyPrimary)
+                }
 
                 plans.forEach { plan ->
                     Column(

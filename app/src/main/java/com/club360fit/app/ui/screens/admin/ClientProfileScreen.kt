@@ -17,7 +17,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FitnessCenter
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.ShowChart
@@ -53,6 +52,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.club360fit.app.data.AdherenceMetricsRepository
+import com.club360fit.app.data.AdherenceSnapshot
+import com.club360fit.app.data.DailyHabitLogDto
+import com.club360fit.app.data.DailyHabitRepository
 import com.club360fit.app.data.MealPlanDto
 import com.club360fit.app.data.MealPlanRepository
 import com.club360fit.app.data.ProgressCheckInDto
@@ -79,8 +82,7 @@ fun ClientProfileScreen(
     onOpenMeals: (String) -> Unit,
     onOpenProgress: (String) -> Unit,
     onOpenSchedule: (String) -> Unit,
-    onOpenPayments: (String) -> Unit,
-    onOpenMealPhotos: (String) -> Unit
+    onOpenPayments: (String) -> Unit
 ) {
     val factory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -98,12 +100,19 @@ fun ClientProfileScreen(
     var refreshKey by remember { mutableStateOf(0) }
     var upcomingSessions by remember { mutableStateOf<List<ScheduleEvent>>(emptyList()) }
     var pastSessions by remember { mutableStateOf<List<ScheduleEvent>>(emptyList()) }
+    var adherence by remember { mutableStateOf<AdherenceSnapshot?>(null) }
+    var habitHistory by remember { mutableStateOf<List<DailyHabitLogDto>>(emptyList()) }
 
     LaunchedEffect(state.client.id, refreshKey) {
         val id = state.client.id ?: return@LaunchedEffect
         workoutPlans = WorkoutPlanRepository.getAllPlans(id)
         mealPlans = MealPlanRepository.getAllPlans(id)
         progressCheckIns = ProgressRepository.getForClient(id)
+        adherence = runCatching { AdherenceMetricsRepository.loadSnapshotForCoachView(id) }.getOrNull()
+        val t = LocalDate.now()
+        habitHistory = runCatching {
+            DailyHabitRepository.listRange(id, t.minusDays(13), t)
+        }.getOrDefault(emptyList())
 
         val allSessions = ScheduleRepository.getEventsForClient(id)
         val today = LocalDate.now()
@@ -184,6 +193,35 @@ fun ClientProfileScreen(
                     }
                 }
 
+                adherence?.let { a ->
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Adherence (this week)", style = MaterialTheme.typography.titleSmall, color = BurgundyPrimary)
+                    androidx.compose.material3.Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                        )
+                    ) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Compliance ${a.weeklyComplianceScore}%", style = MaterialTheme.typography.titleSmall, color = BurgundyPrimary)
+                            Text("Workouts: ${a.sessionsLoggedThisWeek}/${a.expectedSessions} (${a.workoutCompletionPercent}%)", style = MaterialTheme.typography.bodySmall)
+                            Text("Streak: ${a.currentStreakDays} days (best ${a.longestStreakDays})", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+
+                if (habitHistory.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Habit logs (recent)", style = MaterialTheme.typography.titleSmall, color = BurgundyPrimary)
+                    habitHistory.take(14).forEach { h ->
+                        Text(
+                            "${h.logDate.toDisplayDate()}: water ${if (h.waterDone) "✓" else "—"} · steps ${h.steps ?: "—"} · sleep ${h.sleepHours ?: "—"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Tiles (2-column layout)
@@ -202,7 +240,7 @@ fun ClientProfileScreen(
                     )
                     CategoryTile(
                         title = "Meal Plans",
-                        subtitle = "${mealPlans.size} plan${if (mealPlans.size == 1) "" else "s"}",
+                        subtitle = "${mealPlans.size} plan${if (mealPlans.size == 1) "" else "s"} · photos",
                         icon = Icons.Default.Restaurant,
                         modifier = Modifier.weight(1f),
                         enabled = idForNav != null,
@@ -239,16 +277,6 @@ fun ClientProfileScreen(
                     icon = Icons.Default.Payments,
                     enabled = idForNav != null,
                     onClick = { idForNav?.let(onOpenPayments) }
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                WideCategoryTile(
-                    title = "Meal photos",
-                    subtitle = "Daily meal pics & notes",
-                    icon = Icons.Default.CameraAlt,
-                    enabled = idForNav != null,
-                    onClick = { idForNav?.let(onOpenMealPhotos) }
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))

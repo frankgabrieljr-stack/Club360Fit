@@ -2,6 +2,9 @@ package com.club360fit.app.ui.screens.client
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.club360fit.app.data.AdherenceMetricsRepository
+import com.club360fit.app.data.AdherenceSnapshot
+import com.club360fit.app.data.ClientNotificationRepository
 import com.club360fit.app.data.ClientSelfRepository
 import com.club360fit.app.data.MealPlanDto
 import com.club360fit.app.data.MealPlanRepository
@@ -35,7 +38,9 @@ data class ClientHomeUiState(
     val mealPlan: MealPlanDto? = null,
     val workoutPlans: List<WorkoutPlanDto> = emptyList(),
     val mealPlans: List<MealPlanDto> = emptyList(),
-    val progressCheckIns: List<ProgressCheckInDto> = emptyList()
+    val progressCheckIns: List<ProgressCheckInDto> = emptyList(),
+    val adherence: AdherenceSnapshot? = null,
+    val unreadNotifications: Int = 0
 )
 
 class ClientHomeViewModel : ViewModel() {
@@ -78,7 +83,9 @@ class ClientHomeViewModel : ViewModel() {
                 val allWorkouts = WorkoutPlanRepository.getAllPlans(clientId)
                 val allMeals = MealPlanRepository.getAllPlans(clientId)
                 val checkIns = ProgressRepository.getOwnCheckIns(clientId)
-                
+                val adherence = runCatching { AdherenceMetricsRepository.loadSnapshot(clientId) }.getOrNull()
+                val unread = runCatching { ClientNotificationRepository.unreadCount(clientId) }.getOrDefault(0)
+
                 _uiState.value = ClientHomeUiState(
                     isLoading = false,
                     welcomeName = welcomeName,
@@ -93,7 +100,9 @@ class ClientHomeViewModel : ViewModel() {
                     mealPlan = meal,
                     workoutPlans = allWorkouts,
                     mealPlans = allMeals,
-                    progressCheckIns = checkIns
+                    progressCheckIns = checkIns,
+                    adherence = adherence,
+                    unreadNotifications = unread
                 )
             } catch (e: Exception) {
                 _uiState.value = ClientHomeUiState(

@@ -5,14 +5,12 @@ import kotlinx.serialization.Serializable
 import java.time.LocalDate
 
 @Serializable
-data class WorkoutPlanDto(
+data class WorkoutSessionLogDto(
     val id: String? = null,
     @SerialName("client_id") val clientId: String,
-    val title: String,
+    @Serializable(with = LocalDateSerializer::class)
+    @SerialName("session_date") val sessionDate: LocalDate,
     @Serializable(with = LocalDateSerializer::class)
     @SerialName("week_start") val weekStart: LocalDate,
-    @SerialName("plan_text") val planText: String,
-    /** Target sessions per week for completion % (default 4). */
-    @SerialName("expected_sessions") val expectedSessions: Int = 4,
     @SerialName("created_at") val createdAt: String? = null
 )

@@ -49,6 +49,7 @@ fun EditPlanDialog(
     var weekStartText by remember { mutableStateOf(LocalDate.now().toString()) }
     var planTitle by remember { mutableStateOf("") }
     var planText by remember { mutableStateOf("") }
+    var expectedSessionsText by remember { mutableStateOf("4") }
     var isSaving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -60,6 +61,7 @@ fun EditPlanDialog(
                     planTitle = it.title
                     planText = it.planText
                     weekStartText = it.weekStart.toString()
+                    expectedSessionsText = it.expectedSessions.coerceIn(1, 14).toString()
                 }
             } else {
                 MealPlanRepository.getPlanById(editingPlanId)?.let {
@@ -72,6 +74,7 @@ fun EditPlanDialog(
             weekStartText = LocalDate.now().toString()
             planTitle = ""
             planText = ""
+            expectedSessionsText = "4"
         }
     }
 
@@ -102,6 +105,15 @@ fun EditPlanDialog(
                     singleLine = false,
                     maxLines = 6
                 )
+                if (isWorkout) {
+                    OutlinedTextField(
+                        value = expectedSessionsText,
+                        onValueChange = { expectedSessionsText = it.filter { ch -> ch.isDigit() }.take(2) },
+                        label = { Text("Sessions per week (for completion %)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -119,13 +131,15 @@ fun EditPlanDialog(
                     scope.launch {
                         try {
                             if (isWorkout) {
+                                val exp = expectedSessionsText.toIntOrNull()?.coerceIn(1, 14) ?: 4
                                 WorkoutPlanRepository.upsertPlan(
                                     WorkoutPlanDto(
                                         id = editingPlanId,
                                         clientId = clientId,
                                         title = planTitle,
                                         weekStart = date,
-                                        planText = planText
+                                        planText = planText,
+                                        expectedSessions = exp
                                     )
                                 )
                             } else {

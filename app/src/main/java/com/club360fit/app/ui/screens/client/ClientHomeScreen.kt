@@ -18,12 +18,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.FitnessCenter
-import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -39,6 +42,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -59,6 +63,7 @@ import com.club360fit.app.ui.utils.toDisplayDate
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClientHomeScreen(
     onOpenProfile: () -> Unit,
@@ -68,7 +73,8 @@ fun ClientHomeScreen(
     onOpenProgress: (String) -> Unit,
     onOpenSchedule: (String) -> Unit,
     onOpenPayments: (String) -> Unit,
-    onOpenMealPhotos: (String) -> Unit,
+    onOpenHabits: (String) -> Unit,
+    onOpenNotifications: (String) -> Unit,
     viewModel: ClientHomeViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -101,12 +107,29 @@ fun ClientHomeScreen(
                 style = MaterialTheme.typography.headlineLarge,
                 color = BurgundyPrimary
             )
-            IconButton(onClick = onOpenProfile) {
-                Icon(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = "My profile",
-                    tint = BurgundyPrimary
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                BadgedBox(
+                    badge = {
+                        if (state.unreadNotifications > 0) {
+                            Badge { Text("${state.unreadNotifications}") }
+                        }
+                    }
+                ) {
+                    IconButton(onClick = { clientId?.let(onOpenNotifications) }) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Notifications",
+                            tint = BurgundyPrimary
+                        )
+                    }
+                }
+                IconButton(onClick = onOpenProfile) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "My profile",
+                        tint = BurgundyPrimary
+                    )
+                }
             }
         }
 
@@ -143,6 +166,41 @@ fun ClientHomeScreen(
                     Spacer(Modifier.height(16.dp))
                 }
 
+                state.adherence?.let { a ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                        )
+                    ) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("This week", style = MaterialTheme.typography.titleSmall, color = BurgundyPrimary)
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Compliance", style = MaterialTheme.typography.bodyMedium)
+                                Text("${a.weeklyComplianceScore}%", style = MaterialTheme.typography.titleMedium, color = BurgundyPrimary)
+                            }
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Workouts", style = MaterialTheme.typography.bodyMedium)
+                                Text("${a.sessionsLoggedThisWeek}/${a.expectedSessions} · ${a.workoutCompletionPercent}%", style = MaterialTheme.typography.bodyMedium)
+                            }
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Streak", style = MaterialTheme.typography.bodyMedium)
+                                Text("${a.currentStreakDays} day${if (a.currentStreakDays == 1) "" else "s"} (best ${a.longestStreakDays})", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+
                 // Summary card + tappable tiles
                 Text(
                     text = "Today",
@@ -171,51 +229,117 @@ fun ClientHomeScreen(
                     Spacer(Modifier.height(16.dp))
                 }
 
-                if (state.canViewWorkouts || state.canViewNutrition) {
-                    ClientHomeTwoTileRow(
-                        left = if (state.canViewWorkouts) {
-                            { mod ->
-                                CategoryTile(
-                                    title = "Workouts",
-                                    line1 = "Current: ${state.workoutPlan?.title ?: "None"}",
-                                    line2 = "${state.workoutPlans.size} total plan${if (state.workoutPlans.size == 1) "" else "s"}",
-                                    icon = Icons.Default.FitnessCenter,
-                                    modifier = mod,
-                                    enabled = clientId != null,
-                                    onClick = { clientId?.let(onOpenWorkouts) }
-                                )
-                            }
-                        } else null,
-                        right = if (state.canViewNutrition) {
-                            { mod ->
-                                CategoryTile(
-                                    title = "Meals",
-                                    line1 = "Current: ${state.mealPlan?.title ?: "None"}",
-                                    line2 = "${state.mealPlans.size} total plan${if (state.mealPlans.size == 1) "" else "s"}",
-                                    icon = Icons.Default.Restaurant,
-                                    modifier = mod,
-                                    enabled = clientId != null,
-                                    onClick = { clientId?.let(onOpenMeals) }
-                                )
-                            }
-                        } else null
-                    )
-                    Spacer(Modifier.height(12.dp))
-                }
-
-                // Progress always; Schedule only if club events are enabled for this client
                 ClientHomeTwoTileRow(
                     left = { mod ->
                         CategoryTile(
-                            title = "Progress",
-                            line1 = "Last: ${state.progressCheckIns.firstOrNull()?.checkInDate?.toDisplayDate() ?: "None"}",
-                            line2 = "${state.progressCheckIns.size} log${if (state.progressCheckIns.size == 1) "" else "s"}",
-                            icon = Icons.Default.TrendingUp,
+                            title = "Daily habits",
+                            line1 = "Water · steps · sleep",
+                            line2 = "Log today",
+                            icon = Icons.Default.CheckCircle,
                             modifier = mod,
                             enabled = clientId != null,
-                            onClick = { clientId?.let(onOpenProgress) }
+                            onClick = { clientId?.let(onOpenHabits) }
                         )
                     },
+                    right = when {
+                        state.canViewWorkouts -> { mod ->
+                            CategoryTile(
+                                title = "Workouts",
+                                line1 = "Current: ${state.workoutPlan?.title ?: "None"}",
+                                line2 = "${state.workoutPlans.size} total plan${if (state.workoutPlans.size == 1) "" else "s"}",
+                                icon = Icons.Default.FitnessCenter,
+                                modifier = mod,
+                                enabled = clientId != null,
+                                onClick = { clientId?.let(onOpenWorkouts) }
+                            )
+                        }
+                        state.canViewNutrition -> { mod ->
+                            CategoryTile(
+                                title = "Meals",
+                                line1 = "Current: ${state.mealPlan?.title ?: "None"}",
+                                line2 = "${state.mealPlans.size} plan${if (state.mealPlans.size == 1) "" else "s"} · meal photos",
+                                icon = Icons.Default.Restaurant,
+                                modifier = mod,
+                                enabled = clientId != null,
+                                onClick = { clientId?.let(onOpenMeals) }
+                            )
+                        }
+                        else -> null
+                    }
+                )
+                Spacer(Modifier.height(12.dp))
+
+                // When both workouts and nutrition: Meals shares a row with Progress (same tile size as other rows).
+                // Schedule moves to its own row below when events are enabled.
+                if (state.canViewWorkouts && state.canViewNutrition) {
+                    ClientHomeTwoTileRow(
+                        left = { mod ->
+                            CategoryTile(
+                                title = "Meals",
+                                line1 = "Current: ${state.mealPlan?.title ?: "None"}",
+                                line2 = "${state.mealPlans.size} plan${if (state.mealPlans.size == 1) "" else "s"} · meal photos",
+                                icon = Icons.Default.Restaurant,
+                                modifier = mod,
+                                enabled = clientId != null,
+                                onClick = { clientId?.let(onOpenMeals) }
+                            )
+                        },
+                        right = { mod ->
+                            CategoryTile(
+                                title = "Progress",
+                                line1 = "Last: ${state.progressCheckIns.firstOrNull()?.checkInDate?.toDisplayDate() ?: "None"}",
+                                line2 = "${state.progressCheckIns.size} log${if (state.progressCheckIns.size == 1) "" else "s"}",
+                                icon = Icons.Default.TrendingUp,
+                                modifier = mod,
+                                enabled = clientId != null,
+                                onClick = { clientId?.let(onOpenProgress) }
+                            )
+                        }
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    if (state.canViewEvents) {
+                        ClientHomeTwoTileRow(
+                            left = { mod ->
+                                CategoryTile(
+                                    title = "Schedule",
+                                    line1 = state.nextSession?.let { n -> "Next: ${n.date.toDisplayDate()} ${n.time}".trim() } ?: "Next: None",
+                                    line2 = "${state.upcomingSessions.size} upcoming",
+                                    icon = Icons.Default.Event,
+                                    modifier = mod,
+                                    enabled = clientId != null,
+                                    onClick = { clientId?.let(onOpenSchedule) }
+                                )
+                            },
+                            right = if (state.canViewPayments) {
+                                { mod ->
+                                    CategoryTile(
+                                        title = "Payments",
+                                        line1 = "Venmo or Zelle",
+                                        line2 = "View details / QR",
+                                        icon = Icons.Default.Payments,
+                                        modifier = mod,
+                                        enabled = clientId != null,
+                                        onClick = { clientId?.let(onOpenPayments) }
+                                    )
+                                }
+                            } else null
+                        )
+                        Spacer(Modifier.height(12.dp))
+                    }
+                } else {
+                    // Progress always; Schedule only if club events are enabled for this client
+                    ClientHomeTwoTileRow(
+                        left = { mod ->
+                            CategoryTile(
+                                title = "Progress",
+                                line1 = "Last: ${state.progressCheckIns.firstOrNull()?.checkInDate?.toDisplayDate() ?: "None"}",
+                                line2 = "${state.progressCheckIns.size} log${if (state.progressCheckIns.size == 1) "" else "s"}",
+                                icon = Icons.Default.TrendingUp,
+                                modifier = mod,
+                                enabled = clientId != null,
+                                onClick = { clientId?.let(onOpenProgress) }
+                            )
+                        },
                         right = if (state.canViewEvents) {
                             { mod ->
                                 CategoryTile(
@@ -229,26 +353,17 @@ fun ClientHomeScreen(
                                 )
                             }
                         } else null
-                )
-                Spacer(Modifier.height(12.dp))
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
 
-                if (state.canViewNutrition || state.canViewPayments) {
-                    ClientHomeTwoTileRow(
-                        left = if (state.canViewNutrition) {
-                            { mod ->
-                                CategoryTile(
-                                    title = "Meal photos",
-                                    line1 = "Log meals for coach",
-                                    line2 = "Camera or gallery",
-                                    icon = Icons.Default.CameraAlt,
-                                    modifier = mod,
-                                    enabled = clientId != null,
-                                    onClick = { clientId?.let(onOpenMealPhotos) }
-                                )
-                            }
-                        } else null,
-                        right = if (state.canViewPayments) {
-                            { mod ->
+                // Payments alone on a row unless already shown next to Schedule (workouts + nutrition + events).
+                if (state.canViewPayments) {
+                    val paymentsBesideSchedule =
+                        state.canViewWorkouts && state.canViewNutrition && state.canViewEvents
+                    if (!paymentsBesideSchedule) {
+                        ClientHomeTwoTileRow(
+                            left = { mod ->
                                 CategoryTile(
                                     title = "Payments",
                                     line1 = "Venmo or Zelle",
@@ -258,9 +373,10 @@ fun ClientHomeScreen(
                                     enabled = clientId != null,
                                     onClick = { clientId?.let(onOpenPayments) }
                                 )
-                            }
-                        } else null
-                    )
+                            },
+                            right = null
+                        )
+                    }
                 }
             }
         }
