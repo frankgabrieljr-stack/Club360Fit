@@ -109,7 +109,8 @@ class UserProfileViewModel : ViewModel() {
                     context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 } ?: throw IllegalStateException("Could not read image")
 
-                val path = "${user.id}/avatar.jpg"
+                // Match Supabase auth.uid() casing (Kotlin UUID string may differ from Postgres text).
+                val path = "${user.id.lowercase()}/avatar.jpg"
                 val bucket = supabase.storage.from(SupabaseClient.AVATARS_BUCKET)
 
                 withContext(Dispatchers.IO) {

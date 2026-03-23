@@ -29,3 +29,9 @@ gradle-app.setting
 .DS_Store
 Thumbs.db
 
+# Nested iOS repo (separate remote: Club360Fit-app-ios)
+/Club360Fit-iOS/
+
+# Release bundles
+app/release/
+
