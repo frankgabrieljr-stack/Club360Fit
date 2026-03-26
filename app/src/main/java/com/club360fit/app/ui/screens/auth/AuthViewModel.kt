@@ -33,7 +33,6 @@ data class AuthUiState(
     val mealsPerDay: String = "",
     val workoutFrequency: String = "",
     val overallGoal: String = "",
-    val isAdmin: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val resetEmailSent: Boolean = false,
@@ -57,7 +56,7 @@ class AuthViewModel : ViewModel() {
     fun updateMealsPerDay(value: String) = _uiState.update { it.copy(mealsPerDay = value) }
     fun updateWorkoutFrequency(value: String) = _uiState.update { it.copy(workoutFrequency = value) }
     fun updateOverallGoal(value: String) = _uiState.update { it.copy(overallGoal = value) }
-    fun updateIsAdmin(value: Boolean) = _uiState.update { it.copy(isAdmin = value) }
+
     fun clearError() = _uiState.update { it.copy(errorMessage = null) }
     fun clearResetMessage() = _uiState.update { it.copy(resetEmailSent = false, resetErrorMessage = null) }
 
@@ -69,6 +68,7 @@ class AuthViewModel : ViewModel() {
                 _uiState.update { it.copy(resetErrorMessage = "Enter your email to receive a reset link.") }
                 return@launch
             }
+
             try {
                 withContext(Dispatchers.IO) {
                     SupabaseClient.client.auth.resetPasswordForEmail(
@@ -78,9 +78,7 @@ class AuthViewModel : ViewModel() {
                 }
                 _uiState.update { it.copy(resetEmailSent = true) }
             } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(resetErrorMessage = e.message ?: "Failed to send reset email.")
-                }
+                _uiState.update { it.copy(resetErrorMessage = e.message ?: "Failed to send reset email.") }
             }
         }
     }
@@ -89,12 +87,12 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             val state = _uiState.value
+
             if (state.email.isBlank() || state.password.isBlank()) {
-                _uiState.update {
-                    it.copy(isLoading = false, errorMessage = "Email and password are required")
-                }
+                _uiState.update { it.copy(isLoading = false, errorMessage = "Email and password are required") }
                 return@launch
             }
+
             try {
                 // Run Supabase calls on IO dispatcher
                 val isAdminResult = withContext(Dispatchers.IO) {
@@ -108,7 +106,7 @@ class AuthViewModel : ViewModel() {
                         supabase.auth.signUpWith(Email) {
                             email = state.email.trim()
                             password = state.password
-                            data = buildJsonObject {
+                Remove self-promotion role assignment logic from AuthViewModel            data = buildJsonObject {
                                 put("name", JsonPrimitive(state.name))
                                 put("age", JsonPrimitive(state.age))
                                 put("height", JsonPrimitive(state.height))
@@ -119,11 +117,10 @@ class AuthViewModel : ViewModel() {
                                 put("meals_per_day", JsonPrimitive(state.mealsPerDay))
                                 put("workout_frequency", JsonPrimitive(state.workoutFrequency))
                                 put("overall_goal", JsonPrimitive(state.overallGoal))
-                                put("role", JsonPrimitive(if (state.isAdmin) "admin" else "client"))
                             }
                         }
                     }
-                    
+
                     // Retrieve user info and check role from metadata
                     val user = supabase.auth.retrieveUserForCurrentSession(updateSession = true)
                     val role = user.userMetadata?.get("role")?.jsonPrimitive?.contentOrNull
@@ -134,9 +131,7 @@ class AuthViewModel : ViewModel() {
                 onSuccess(isAdminResult)
             } catch (e: Exception) {
                 val message = e.message ?: "Authentication failed"
-                _uiState.update {
-                    it.copy(isLoading = false, errorMessage = message)
-                }
+                _uiState.update { it.copy(isLoading = false, errorMessage = message) }
             }
         }
     }
