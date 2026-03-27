@@ -62,7 +62,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -80,7 +79,6 @@ import com.club360fit.app.ui.theme.BurgundyPrimary
 import com.club360fit.app.ui.utils.SubmitResultMessages
 import com.club360fit.app.ui.theme.OnBurgundy
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -98,7 +96,6 @@ fun UserProfileScreen(
     var pendingBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showAvatarEditor by remember { mutableStateOf(false) }
     var firstName by remember { mutableStateOf("") }
-        val scope = rememberCoroutineScope()
     var lastName by remember { mutableStateOf("") }
     var bio by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
