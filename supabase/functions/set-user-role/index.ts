@@ -60,12 +60,39 @@ Deno.serve(async (req: Request) => {
 
     const prev = existing.user.user_metadata ?? {};
     const merged = { ...prev, role: newRole };
-
     const { error: upErr } = await adminClient.auth.admin.updateUserById(targetId, {
       user_metadata: merged as Record<string, unknown>,
     });
     if (upErr) {
       return json(500, { error: upErr.message });
+    }
+
+    // Sync to public.profiles table
+    // Derive full_name from metadata (name, full_name, or first_name/last_name)
+    const fullName = merged.full_name || merged.name || 
+      (merged.first_name && merged.last_name ? `${merged.first_name} ${merged.last_name}` : '') || '';
+    
+    try {
+      const { error: profileErr } = await adminClient
+        .from('profiles')
+        .upsert({
+          id: targetId,
+          email: existing.user.email,
+          full_name: fullName,
+          avatar_url: merged.avatar_url || '',
+          role: newRole,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'id'
+        });
+      
+      if (profileErr) {
+        // Log warning but don't fail - profiles table might not be deployed yet
+        console.warn('Failed to update profiles table:', profileErr.message);
+      }
+    } catch (profileUpdateErr) {
+      // Log warning but continue - table sync is not critical for auth update
+      console.warn('Error updating profiles table:', profileUpdateErr);
     }
 
     return json(200, { ok: true });
