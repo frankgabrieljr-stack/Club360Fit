@@ -185,6 +185,18 @@ fun ClientProfileScreen(
                     style = MaterialTheme.typography.titleMedium,
                     color = BurgundyPrimary
                 )
+                state.platformAccountRole?.let { raw ->
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = if (raw.equals("admin", ignoreCase = true)) {
+                            "App login: Admin (coach tools in Club360Fit)"
+                        } else {
+                            "App login: Client (member app)"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = BurgundyPrimary.copy(alpha = 0.92f)
+                    )
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 androidx.compose.material3.Card(
                     modifier = Modifier.fillMaxWidth(),

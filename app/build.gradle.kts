@@ -24,8 +24,8 @@ android {
         applicationId = "com.club360fit.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.2.1"
 
         // Supabase anon key: add SUPABASE_ANON_KEY=your_key to project root local.properties
         val anonKey = localProperties.getProperty("SUPABASE_ANON_KEY") ?: ""

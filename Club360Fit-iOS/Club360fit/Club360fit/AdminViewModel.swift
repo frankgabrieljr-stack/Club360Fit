@@ -8,6 +8,8 @@ final class AdminViewModel {
     var isLoading = true
     var errorMessage: String?
     var clients: [ClientDTO] = []
+    /// `clients.user_id` → `public.profiles.role` (`admin` / `client`).
+    var profileRolesByUserId: [String: String] = [:]
 
     func load() async {
         isLoading = true
@@ -15,9 +17,19 @@ final class AdminViewModel {
         defer { isLoading = false }
         do {
             clients = try await ClientDataService.fetchClientsForCoach()
+            var roles: [String: String] = [:]
+            for c in clients {
+                let uid = c.userId.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !uid.isEmpty else { continue }
+                if let r = try? await ClientDataService.fetchProfileRoleForUser(userId: uid) {
+                    roles[uid] = r
+                }
+            }
+            profileRolesByUserId = roles
         } catch {
             errorMessage = error.localizedDescription
             clients = []
+            profileRolesByUserId = [:]
         }
     }
 

@@ -76,7 +76,11 @@ private struct AdminClientsTab: View {
                                 NavigationLink {
                                     AdminClientHubView(clientId: cid, displayTitle: AdminViewModel.listTitle(for: client))
                                 } label: {
-                                    AdminClientRow(title: AdminViewModel.listTitle(for: client), subtitle: "Plans, meals, progress")
+                                    AdminClientRow(
+                                        title: AdminViewModel.listTitle(for: client),
+                                        subtitle: "Plans, meals, progress",
+                                        platformRole: model.profileRolesByUserId[client.userId]
+                                    )
                                 }
                                 .buttonStyle(.plain)
                             } else {
@@ -125,6 +129,7 @@ private struct AdminClientsTab: View {
 private struct AdminClientRow: View {
     let title: String
     let subtitle: String
+    var platformRole: String? = nil
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -132,6 +137,11 @@ private struct AdminClientRow: View {
                 Text(title)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(Club360Theme.cardTitle)
+                if let platformRole {
+                    Text(platformRole == "admin" ? "App login: Admin" : "App login: Client")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(platformRole == "admin" ? Club360Theme.tealDark : Club360Theme.captionOnGlass)
+                }
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(Club360Theme.captionOnGlass)
@@ -248,7 +258,7 @@ struct AdminClientHubView: View {
                                     .stroke(Color.black.opacity(0.1), lineWidth: 1)
                             )
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Member")
+                            Text(homeModel.platformAccessCaption)
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(Club360Theme.captionOnGlass)
                                 .textCase(.uppercase)

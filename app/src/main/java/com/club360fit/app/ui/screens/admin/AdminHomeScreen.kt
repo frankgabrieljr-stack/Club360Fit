@@ -26,6 +26,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -615,6 +616,7 @@ fun ClientsTab(
                             goal = client.goal ?: "",
                             lastActive = client.lastActive ?: "Never",
                             subtitle = "Plans, meals, progress",
+                            platformRole = state.profileRolesByUserId[client.userId],
                             age = client.age,
                             heightCm = client.heightCm,
                             weightKg = client.weightKg,
@@ -634,6 +636,8 @@ fun ClientCard(
     goal: String,
     lastActive: String,
     subtitle: String = "Plans, meals, progress",
+    /** `public.profiles.role` for this row’s `user_id` (`admin` / `client`). */
+    platformRole: String? = null,
     age: Int? = null,
     heightCm: Int? = null,
     weightKg: Int? = null,
@@ -678,6 +682,21 @@ fun ClientCard(
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
+                platformRole?.let { raw ->
+                    val label = if (raw.equals("admin", ignoreCase = true)) {
+                        "App login: Admin"
+                    } else {
+                        "App login: Client"
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (raw.equals("admin", ignoreCase = true)) BurgundyPrimary.copy(alpha = 0.9f)
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 if (subtitle.isNotBlank()) {
                     Spacer(Modifier.height(2.dp))
                     Text(

@@ -73,6 +73,24 @@ enum ClientDataService {
             .value
     }
 
+    private struct ProfileRoleRow: Decodable, Sendable {
+        let role: String
+    }
+
+    /// `public.profiles.role` for this auth user (`admin` / `client`). Coach JWT must be `admin` (RLS).
+    static func fetchProfileRoleForUser(userId: String) async throws -> String? {
+        let trimmed = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let rows: [ProfileRoleRow] = try await db
+            .from("profiles")
+            .select("role")
+            .eq("id", value: trimmed)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first?.role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
     /// Sets `coach_id` to the signed-in user when the row is still unassigned (signup intake). Required for plan RLS after `coach_id` became nullable.
     static func claimCoachAssignmentIfNeeded(clientId: String) async throws {
         guard let session = db.auth.currentSession else { return }

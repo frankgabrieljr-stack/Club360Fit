@@ -17,6 +17,15 @@ final class ClientHomeViewModel {
     /// Auth `user_id` on the loaded `clients` row — public avatar URL is `avatars/{user_id}/avatar.jpg`.
     var memberAuthUserId: String?
 
+    /// `public.profiles.role` for `memberAuthUserId` (`admin` / `client`), when loaded.
+    var memberPlatformRole: String?
+
+    /// Short label for coach hub header (matches `public.profiles`).
+    var platformAccessCaption: String {
+        guard let r = memberPlatformRole?.lowercased() else { return "App access" }
+        return r == "admin" ? "App · Admin" : "App · Client"
+    }
+
     var canViewWorkouts = true
     var canViewNutrition = true
     var canViewEvents = false
@@ -133,12 +142,20 @@ final class ClientHomeViewModel {
         mealPlanCount = mPlans.count
         currentMealTitle = mPlans.first?.title
         progressCheckInCount = pRows.count
+
+        let authUid = row.userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !authUid.isEmpty {
+            memberPlatformRole = try? await ClientDataService.fetchProfileRoleForUser(userId: authUid)
+        } else {
+            memberPlatformRole = nil
+        }
     }
 
     private func resetSummary() {
         useCoachNotificationUnread = false
         clientId = nil
         memberAuthUserId = nil
+        memberPlatformRole = nil
         memberSinceStartOfDay = nil
         welcomeName = "there"
         currentWorkoutTitle = nil

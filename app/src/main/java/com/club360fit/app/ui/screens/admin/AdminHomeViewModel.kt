@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.club360fit.app.data.ClientDto
 import com.club360fit.app.data.ClientRepository
 import com.club360fit.app.data.ClientNotificationRepository
+import com.club360fit.app.data.ProfileRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,6 +13,8 @@ import kotlinx.coroutines.launch
 
 data class AdminHomeUiState(
     val clients: List<ClientDto> = emptyList(),
+    /** `clients.user_id` → `public.profiles.role` (`admin` / `client`). */
+    val profileRolesByUserId: Map<String, String> = emptyMap(),
     val isLoading: Boolean = false,
     val error: String? = null
 )
@@ -39,7 +42,13 @@ class AdminHomeViewModel : ViewModel() {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
                 val clients = ClientRepository.getClients()
-                _uiState.value = AdminHomeUiState(clients = clients, isLoading = false)
+                val userIds = clients.map { it.userId }.filter { it.isNotBlank() }.distinct()
+                val roles = ProfileRepository.getRolesForUserIds(userIds)
+                _uiState.value = AdminHomeUiState(
+                    clients = clients,
+                    profileRolesByUserId = roles,
+                    isLoading = false
+                )
                 refreshCoachUnread()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
