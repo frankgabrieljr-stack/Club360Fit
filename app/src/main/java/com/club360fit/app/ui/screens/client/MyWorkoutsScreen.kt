@@ -20,6 +20,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -61,6 +62,8 @@ fun MyWorkoutsScreen(
     var weekLogged by remember { mutableStateOf(0) }
     var weekExpected by remember { mutableStateOf(4) }
     var isLogging by remember { mutableStateOf(false) }
+    // A2: optional note to coach
+    var workoutNoteForCoach by remember { mutableStateOf("") }
     val today = LocalDate.now()
     val weekStart = AdherenceMetricsCalculator.weekStartSunday(today)
 
@@ -132,16 +135,35 @@ fun MyWorkoutsScreen(
                     trackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
                 Text(
-                    "$weekLogged / $weekExpected sessions · ${(pct * 100).toInt()}%",
+                    "$weekLogged / $weekExpected sessions \u00b7 ${(pct * 100).toInt()}%",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                // A2: Optional note to coach field
+                OutlinedTextField(
+                    value = workoutNoteForCoach,
+                    onValueChange = { workoutNoteForCoach = it },
+                    label = { Text("Optional note to coach") },
+                    placeholder = { Text("e.g. swapped squats due to knee pain") },
+                    supportingText = { Text("Sent to your coach with today's workout log.") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 4,
+                    enabled = !isLogging
+                )
+
                 Button(
                     onClick = {
                         scope.launch {
                             isLogging = true
                             try {
-                                WorkoutSessionLogRepository.logSession(clientId, today)
+                                WorkoutSessionLogRepository.logSession(
+                                    clientId,
+                                    today,
+                                    noteToCoach = workoutNoteForCoach.trim().ifBlank { null }
+                                )
+                                workoutNoteForCoach = ""
                                 refreshWeek()
                                 snackbarHostState.showSnackbar(
                                     SubmitResultMessages.LOGGED_SUCCESS,
@@ -161,8 +183,9 @@ fun MyWorkoutsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = BurgundyPrimary)
                 ) {
-                    Text(if (isLogging) "Saving…" else "Log a workout today")
+                    Text(if (isLogging) "Saving\u2026" else "Log a workout today")
                 }
+
                 Spacer(Modifier.height(12.dp))
 
                 if (plans.isEmpty()) {
@@ -175,7 +198,7 @@ fun MyWorkoutsScreen(
                     plans.forEach { plan ->
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Text(
-                                text = "Week of ${plan.weekStart.toDisplayDate()} – ${plan.title}",
+                                text = "Week of ${plan.weekStart.toDisplayDate()} \u2013 ${plan.title}",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = BurgundyPrimary
                             )
@@ -188,4 +211,3 @@ fun MyWorkoutsScreen(
         }
     }
 }
-
