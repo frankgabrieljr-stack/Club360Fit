@@ -12,11 +12,12 @@ object WorkoutSessionLogRepository {
 
     fun weekStartSunday(d: LocalDate): LocalDate = d.with(DayOfWeek.SUNDAY)
 
-    suspend fun logSession(clientId: String, sessionDate: LocalDate) = withContext(Dispatchers.IO) {
+        suspend fun logSession(clientId: String, sessionDate: LocalDate, noteToCoach: String? = null) = withContext(Dispatchers.IO) {
         val row = WorkoutSessionLogDto(
             clientId = clientId,
             sessionDate = sessionDate,
-            weekStart = weekStartSunday(sessionDate)
+            weekStart = weekStartSunday(sessionDate),
+                        noteToCoach = noteToCoach
         )
         try {
             client.postgrest["workout_session_logs"].insert(row)
@@ -63,3 +64,33 @@ object WorkoutSessionLogRepository {
                 .decodeList<WorkoutSessionLogDto>()
         }
 }
+
+    /** Coach updates coach_reply and coach_replied_at on a session log. */
+    suspend fun replyToWorkoutNote(
+        sessionLogId: String,
+        replyText: String
+    ) = withContext(Dispatchers.IO) {
+        val trimmed = replyText.trim()
+        require(trimmed.isNotEmpty()) { "Reply text must not be empty" }
+        val now = java.time.Instant.now().toString()
+        client.postgrest["workout_session_logs"].update(
+            {
+                set("coach_reply", trimmed)
+                set("coach_replied_at", now)
+            }
+        ) {
+            filter { eq("id", sessionLogId) }
+        }
+    }
+
+    /** Fetch recent session logs for a client (coach view). */
+    suspend fun fetchForClient(clientId: String, limit: Int = 20): List<WorkoutSessionLogDto> =
+        withContext(Dispatchers.IO) {
+            client.postgrest["workout_session_logs"]
+                .select {
+                    filter { eq("client_id", clientId) }
+                    order("session_date", order = Order.DESCENDING)
+                    limit(limit.toLong())
+                }
+                .decodeList<WorkoutSessionLogDto>()
+        }
