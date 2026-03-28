@@ -1,5 +1,6 @@
 package com.club360fit.app.ui.screens.admin
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,6 +61,7 @@ fun CoachDirectoryScreen(
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var copiedId by remember { mutableStateOf<String?>(null) }
+    var detailProfile by remember { mutableStateOf<CoachDirectoryProfileDto?>(null) }
 
     val currentUserId = remember {
         client.auth.currentUserOrNull()?.id?.trim()?.lowercase()
@@ -84,8 +86,9 @@ fun CoachDirectoryScreen(
         if (copiedId == id) copiedId = null
     }
 
+    Box(modifier = modifier) {
     Scaffold(
-        modifier = modifier,
+        modifier = Modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
                 title = { Text("Coaches", color = BurgundyPrimary) },
@@ -167,6 +170,7 @@ fun CoachDirectoryScreen(
                                 currentUserId = currentUserId,
                                 copiedId = copiedId,
                                 onSelectForTransfer = onSelectForTransfer,
+                                onOpenProfile = { detailProfile = row },
                                 onCopy = { idLower ->
                                     clipboard.setText(AnnotatedString(idLower))
                                     copiedId = idLower
@@ -182,6 +186,16 @@ fun CoachDirectoryScreen(
             }
         }
     }
+        detailProfile?.let { profile ->
+            CoachProfileDetailScreen(
+                profile = profile,
+                onBack = { detailProfile = null },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+            )
+        }
+    }
 }
 
 @Composable
@@ -190,6 +204,7 @@ private fun CoachDirectoryRow(
     currentUserId: String?,
     copiedId: String?,
     onSelectForTransfer: ((String) -> Unit)?,
+    onOpenProfile: () -> Unit,
     onCopy: (String) -> Unit,
     onUseForTransfer: (String) -> Unit
 ) {
@@ -249,6 +264,9 @@ private fun CoachDirectoryRow(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                OutlinedButton(onClick = onOpenProfile) {
+                    Text("View profile")
+                }
                 OutlinedButton(onClick = { onCopy(idLower) }) {
                     Text(if (copiedId == idLower) "Copied" else "Copy ID")
                 }

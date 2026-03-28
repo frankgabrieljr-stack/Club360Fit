@@ -87,6 +87,15 @@ struct CoachDirectoryView: View {
                 .textSelection(.enabled)
 
             HStack(spacing: 10) {
+                NavigationLink {
+                    CoachProfileDetailView(row: row, currentUserId: currentUserId)
+                } label: {
+                    Text("View profile")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .tint(Club360Theme.burgundy)
+
                 Button {
                     copyId(idLower)
                 } label: {

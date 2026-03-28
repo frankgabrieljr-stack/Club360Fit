@@ -9,5 +9,6 @@ data class CoachDirectoryProfileDto(
     val id: String,
     @SerialName("full_name") val fullName: String? = null,
     val email: String? = null,
+    @SerialName("avatar_url") val avatarUrl: String? = null,
     val role: String = "client"
 )

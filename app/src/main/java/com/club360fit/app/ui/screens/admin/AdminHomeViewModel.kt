@@ -32,8 +32,10 @@ class AdminHomeViewModel : ViewModel() {
 
     fun refreshCoachUnread() {
         viewModelScope.launch {
-            _coachUnreadCount.value = runCatching { ClientNotificationRepository.coachUnreadCount() }
-                .getOrDefault(0)
+            _coachUnreadCount.value = runCatching {
+                val ids = ClientRepository.getClients().mapNotNull { it.id }.toSet()
+                ClientNotificationRepository.coachUnreadCount(ids)
+            }.getOrDefault(0)
         }
     }
 

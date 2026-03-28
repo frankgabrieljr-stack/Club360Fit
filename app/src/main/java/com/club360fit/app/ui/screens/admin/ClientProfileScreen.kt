@@ -224,7 +224,8 @@ fun ClientProfileScreen(
                         c.weightKg?.let { w ->
                             formatWeightLbsFromKg(w)?.let { label -> Text("Weight: $label") }
                         }
-                        c.foodRestrictions?.takeIf { it.isNotBlank() }?.let { Text("Food Restrictions: $it") }
+                        c.goal?.trim()?.takeIf { it.isNotEmpty() }?.let { Text("Goal: $it") }
+                        c.foodRestrictions?.takeIf { it.isNotBlank() }?.let { Text("Food restrictions: $it") }
                     }
                 }
 

@@ -140,8 +140,8 @@ class AuthViewModel : ViewModel() {
                             data = buildJsonObject {
                                 put("name", JsonPrimitive(state.name))
                                 put("age", JsonPrimitive(state.age))
-                                put("height", JsonPrimitive(state.height))
-                                put("weight", JsonPrimitive(state.weight))
+                                put("height_cm", JsonPrimitive(state.height))
+                                put("weight_kg", JsonPrimitive(state.weight))
                                 put("phone", JsonPrimitive(state.phone))
                                 put("medical_conditions", JsonPrimitive(state.medicalConditions))
                                 put("food_restrictions", JsonPrimitive(state.foodRestrictions))

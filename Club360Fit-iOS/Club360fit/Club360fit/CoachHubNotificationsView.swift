@@ -193,6 +193,8 @@ private final class CoachHubNotificationsModel {
     func load(showLoading: Bool = true) async {
         if showLoading { isLoading = true }
         defer { if showLoading { isLoading = false } }
-        items = (try? await ClientDataService.fetchNotificationsForCoach(limit: 80)) ?? []
+        let clients = (try? await ClientDataService.fetchClientsForCoach()) ?? []
+        let ids = Set(clients.compactMap { $0.id })
+        items = (try? await ClientDataService.fetchNotificationsForCoach(clientIds: ids, limit: 80)) ?? []
     }
 }

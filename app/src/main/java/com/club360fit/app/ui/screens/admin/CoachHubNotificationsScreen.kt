@@ -66,15 +66,15 @@ fun CoachHubNotificationsScreen(
         scope.launch {
             loading = true
             try {
-                clientNameById = runCatching { ClientRepository.getClients() }
-                    .getOrNull()
-                    .orEmpty()
+                val coachClients = runCatching { ClientRepository.getClients() }.getOrNull().orEmpty()
+                val clientIds = coachClients.mapNotNull { it.id }.toSet()
+                clientNameById = coachClients
                     .mapNotNull { c ->
                         val id = c.id ?: return@mapNotNull null
                         id to (c.fullName?.ifBlank { null } ?: "(no name)")
                     }
                     .toMap()
-                items = ClientNotificationRepository.listForCoach(80)
+                items = ClientNotificationRepository.listForCoach(clientIds, 80)
             } finally {
                 loading = false
             }

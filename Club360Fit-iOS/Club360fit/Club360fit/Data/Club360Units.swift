@@ -20,4 +20,13 @@ enum Club360Units {
     static func kgFromPounds(_ pounds: Double) -> Double {
         pounds / lbsPerKg
     }
+
+    /// `clients.height_cm` → imperial label (matches Android `toFeetInches`).
+    static func feetInchesLabel(fromCm cm: Int?) -> String? {
+        guard let cm, cm > 0 else { return nil }
+        let totalIn = Int((Double(cm) / 2.54).rounded())
+        let ft = totalIn / 12
+        let inch = totalIn % 12
+        return "\(ft)′ \(inch)″"
+    }
 }

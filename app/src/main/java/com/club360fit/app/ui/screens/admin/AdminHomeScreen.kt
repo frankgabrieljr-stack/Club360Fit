@@ -252,7 +252,7 @@ fun AdminHomeScreen(
                                 color = BurgundyPrimary
                             )
                             Text(
-                                text = "Review meal photos from all clients",
+                                text = "Review meal photos from your assigned clients",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = BurgundyPrimary.copy(alpha = 0.85f)
                             )
@@ -640,6 +640,25 @@ fun ClientsTab(
     }
 }
 
+private fun buildClientMemberSummaryLine(
+    age: Int?,
+    heightCm: Int?,
+    weightKg: Int?,
+    goal: String
+): String {
+    val parts = mutableListOf<String>()
+    age?.let { parts.add("Age $it") }
+    heightCm?.takeIf { it > 0 }?.let {
+        val (ft, inc) = it.toFeetInches()
+        parts.add("${ft}' ${inc}\"")
+    }
+    weightKg?.takeIf { it > 0 }?.let { kg ->
+        formatWeightLbsFromKg(kg)?.let { parts.add(it) }
+    }
+    goal.trim().takeIf { it.isNotEmpty() }?.let { parts.add("Goal: $it") }
+    return parts.joinToString(" · ")
+}
+
 @Composable
 fun ClientCard(
     fullName: String,
@@ -715,27 +734,14 @@ fun ClientCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    age?.let {
-                        Text("Age: $it", style = MaterialTheme.typography.bodySmall)
-                    }
-                    heightCm?.let {
-                        val (ft, inc) = it.toFeetInches()
-                        Text("${ft}' ${inc}\"", style = MaterialTheme.typography.bodySmall)
-                    }
-                    weightKg?.let {
-                        formatWeightLbsFromKg(it)?.let { label ->
-                            Text(label, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                }
-                if (goal.isNotBlank()) {
-                    Spacer(Modifier.height(4.dp))
+                val memberSummary = buildClientMemberSummaryLine(age, heightCm, weightKg, goal)
+                if (memberSummary.isNotBlank()) {
+                    Spacer(Modifier.height(8.dp))
                     Text(
-                        text = goal,
+                        text = memberSummary,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }

@@ -71,9 +71,20 @@ extension ClientDataService {
             .value
     }
 
+    /// Same as [fetchNotificationsForCoach(limit:)] but only rows whose `client_id` is in [clientIds] (defense-in-depth with RLS).
+    static func fetchNotificationsForCoach(clientIds: Set<String>, limit: Int = 80) async throws -> [ClientNotificationDTO] {
+        guard !clientIds.isEmpty else { return [] }
+        let overfetch = min(max(limit * 4, limit), 500)
+        let rows = try await fetchNotificationsForCoach(limit: overfetch)
+        return Array(rows.filter { clientIds.contains($0.clientId) }.prefix(limit))
+    }
+
     static func unreadNotificationCountForCoach() async throws -> Int {
-        let rows = try await fetchNotificationsForCoach(limit: 400)
-        return rows.filter { $0.coachReadAt == nil }.count
+        let clients = try await fetchClientsForCoach()
+        let ids = Set(clients.compactMap { $0.id })
+        guard !ids.isEmpty else { return 0 }
+        let rows = try await fetchNotificationsForCoach(limit: 500)
+        return rows.filter { ids.contains($0.clientId) && $0.coachReadAt == nil }.count
     }
 
     /// Marks one row read for the **coach** (`coach_read_at`), not the member’s `read_at`.
@@ -89,8 +100,10 @@ extension ClientDataService {
 
     /// Main Coach Hub: clear coach unread across all coached clients.
     static func markAllNotificationsReadForCoach() async throws {
+        let clients = try await fetchClientsForCoach()
+        let ids = Set(clients.compactMap { $0.id })
         let rows = try await fetchNotificationsForCoach(limit: 500)
-        let unread = rows.filter { $0.coachReadAt == nil }
+        let unread = rows.filter { ids.contains($0.clientId) && $0.coachReadAt == nil }
         for n in unread {
             if let id = n.rowId {
                 try await markNotificationReadAsCoach(notificationId: id)

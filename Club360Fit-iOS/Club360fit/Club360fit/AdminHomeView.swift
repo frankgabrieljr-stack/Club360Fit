@@ -80,6 +80,7 @@ private struct AdminClientsTab: View {
                                     AdminClientRow(
                                         title: AdminViewModel.listTitle(for: client),
                                         subtitle: "Plans, meals, progress",
+                                        memberSummary: client.memberSummaryLine,
                                         platformRole: model.profileRolesByUserId[client.userId]
                                     )
                                 }
@@ -130,6 +131,7 @@ private struct AdminClientsTab: View {
 private struct AdminClientRow: View {
     let title: String
     let subtitle: String
+    var memberSummary: String = ""
     var platformRole: String? = nil
 
     var body: some View {
@@ -146,6 +148,12 @@ private struct AdminClientRow: View {
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(Club360Theme.captionOnGlass)
+                if !memberSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(memberSummary)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(Club360Theme.cardTitle)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 8)
             Image(systemName: "chevron.right")

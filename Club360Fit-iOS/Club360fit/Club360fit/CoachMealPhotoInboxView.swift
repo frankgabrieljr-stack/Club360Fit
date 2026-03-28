@@ -94,7 +94,7 @@ struct CoachMealPhotoInboxView: View {
                 .frame(width: 48, height: 48)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
-                Text("All clients")
+                Text("Your clients")
                     .font(.title2.weight(.bold))
                     .foregroundStyle(Club360Theme.burgundy)
                 Text("Grouped by member — newest uploads first. Save feedback on each card.")

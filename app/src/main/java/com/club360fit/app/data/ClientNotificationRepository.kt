@@ -35,8 +35,26 @@ object ClientNotificationRepository {
                 .decodeList<ClientNotificationDto>()
         }
 
+    /**
+     * Coach hub feed scoped to [clientIds] (typically `ClientRepository.getClients()` ids).
+     * Defense-in-depth on top of RLS so each coach only sees their roster’s notifications.
+     */
+    suspend fun listForCoach(clientIds: Set<String>, limit: Int = 80): List<ClientNotificationDto> =
+        withContext(Dispatchers.IO) {
+            if (clientIds.isEmpty()) return@withContext emptyList()
+            listForCoach((limit * 4).coerceAtMost(500).coerceAtLeast(limit))
+                .filter { it.clientId in clientIds }
+                .take(limit)
+        }
+
     suspend fun coachUnreadCount(): Int = withContext(Dispatchers.IO) {
         listForCoach(400).count { it.coachReadAt == null }
+    }
+
+    /** Unread coach notifications for [clientIds] only (matches [listForCoach] scoping). */
+    suspend fun coachUnreadCount(clientIds: Set<String>): Int = withContext(Dispatchers.IO) {
+        if (clientIds.isEmpty()) return@withContext 0
+        listForCoach(clientIds, 400).count { it.coachReadAt == null }
     }
 
     suspend fun markCoachReadAsCoach(notificationId: String) = withContext(Dispatchers.IO) {

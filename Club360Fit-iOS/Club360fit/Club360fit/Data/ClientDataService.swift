@@ -96,6 +96,7 @@ enum ClientDataService {
         let id: String
         let full_name: String?
         let email: String?
+        let avatar_url: String?
         let role: String
     }
 
@@ -103,7 +104,7 @@ enum ClientDataService {
     static func fetchCoachDirectoryProfiles() async throws -> [CoachDirectoryProfileRow] {
         try await db
             .from("profiles")
-            .select("id, full_name, email, role")
+            .select("id, full_name, email, avatar_url, role")
             .eq("role", value: "admin")
             .order("full_name", ascending: true)
             .execute()
