@@ -96,8 +96,11 @@ extension ClientDataService {
         note: String,
         nextDueDate: String?,
         nextDueAmount: String?,
-        nextDueNote: String?
+        nextDueNote: String?,
+        dueRecurrence: String = "none"
     ) async throws {
+        let recurrence = dueRecurrence.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let safeRecurrence = ["none", "weekly", "monthly"].contains(recurrence) ? recurrence : "none"
         let row: [String: AnyJSON] = [
             "client_id": .string(clientId),
             "venmo_url": venmoUrl.map { .string($0) } ?? .null,
@@ -107,6 +110,7 @@ extension ClientDataService {
             "next_due_date": nextDueDate.map { .string($0) } ?? .null,
             "next_due_amount": nextDueAmount.map { .string($0) } ?? .null,
             "next_due_note": nextDueNote.map { .string($0) } ?? .null,
+            "due_recurrence": .string(safeRecurrence),
         ]
         try await svc
             .from("client_payment_settings")

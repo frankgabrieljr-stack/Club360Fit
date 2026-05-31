@@ -13,6 +13,7 @@ struct CoachPaymentSettingsView: View {
     @State private var nextDueDay = Date()
     @State private var nextDueAmount = ""
     @State private var nextDueNote = ""
+    @State private var dueRecurrence = "none"
 
     @State private var isLoading = true
     @State private var isSaving = false
@@ -91,6 +92,21 @@ struct CoachPaymentSettingsView: View {
                             TextField("Amount (e.g. $25)", text: $nextDueAmount)
                             TextField("Fine print under amount (optional)", text: $nextDueNote, axis: .vertical)
                                 .lineLimit(2 ... 4)
+                            sectionLabel("Repeat after payment")
+                            Picker("Recurrence", selection: $dueRecurrence) {
+                                Text("One-time").tag("none")
+                                Text("Weekly").tag("weekly")
+                                Text("Monthly").tag("monthly")
+                            }
+                            .pickerStyle(.segmented)
+                            if dueRecurrence != "none" {
+                                Text(
+                                    "When you log or approve a payment, the due date moves forward by one \(dueRecurrence == "weekly" ? "week" : "month")."
+                                )
+                                .font(.footnote)
+                                .foregroundStyle(Club360Theme.cardSubtitle)
+                                .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
 
                         Button {
@@ -129,6 +145,7 @@ struct CoachPaymentSettingsView: View {
                 hasUpcomingDue = false
                 nextDueAmount = ""
                 nextDueNote = ""
+                dueRecurrence = "none"
                 return
             }
             venmoUrl = s.venmoUrl ?? ""
@@ -137,6 +154,8 @@ struct CoachPaymentSettingsView: View {
             note = s.note ?? ""
             nextDueAmount = s.nextDueAmount ?? ""
             nextDueNote = s.nextDueNote ?? ""
+            let rawRecurrence = (s.dueRecurrence ?? "none").lowercased()
+            dueRecurrence = ["none", "weekly", "monthly"].contains(rawRecurrence) ? rawRecurrence : "none"
             if let d = s.nextDueDate, let date = Club360DateFormats.postgresDay.date(from: d) {
                 hasUpcomingDue = true
                 nextDueDay = Calendar.current.startOfDay(for: date)
@@ -172,8 +191,17 @@ struct CoachPaymentSettingsView: View {
                 note: n,
                 nextDueDate: dueStr,
                 nextDueAmount: hasUpcomingDue ? (amt.isEmpty ? nil : amt) : nil,
-                nextDueNote: hasUpcomingDue ? (dueNote.isEmpty ? nil : dueNote) : nil
+                nextDueNote: hasUpcomingDue ? (dueNote.isEmpty ? nil : dueNote) : nil,
+                dueRecurrence: dueRecurrence
             )
+            if hasUpcomingDue, let dueStr {
+                await PaymentReminderService.notifyMemberAfterCoachSave(
+                    clientId: clientId,
+                    nextDueDate: dueStr,
+                    nextDueAmount: amt.isEmpty ? nil : amt,
+                    nextDueNote: dueNote.isEmpty ? nil : dueNote
+                )
+            }
             toast = "Saved. Member may need to pull to refresh."
             try? await Task.sleep(for: .seconds(2))
             await MainActor.run {

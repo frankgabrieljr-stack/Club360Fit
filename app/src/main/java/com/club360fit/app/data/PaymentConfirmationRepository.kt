@@ -85,6 +85,7 @@ object PaymentConfirmationRepository {
         ) {
             filter { eq("id", confirmationId) }
         }
+        PaymentSettingsRepository.advanceRecurringDueDate(clientId)
     }
 
     /** Coach: mark as declined (does not create a payment record). */

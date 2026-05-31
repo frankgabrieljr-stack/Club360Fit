@@ -38,6 +38,7 @@ final class AdminViewModel {
                 }
             }
             profileRolesByUserId = roles
+            await PaymentReminderService.remindCoachOfClientsDueToday()
         } catch {
             errorMessage = error.localizedDescription
             clients = []

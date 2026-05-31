@@ -8,7 +8,8 @@ import { SignJWT, importPKCS8 } from "https://esm.sh/jose@5.9.6";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 type PushPayload = {
@@ -56,15 +57,15 @@ Deno.serve(async (req: Request) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
     const bearerToken = authHeader.replace(/^Bearer\s+/i, "");
-    const { data: userData, error: userErr } = await adminClient.auth.getUser(bearerToken);
-    if (userErr || !userData.user) {
-      return json(401, { error: "Invalid session" });
-    }
+    const cronSecret = Deno.env.get("PAYMENT_REMINDER_CRON_SECRET");
+    const cronHeader = req.headers.get("x-cron-secret");
+    const isCronCall =
+      !!cronSecret && !!cronHeader && cronHeader === cronSecret;
+    const isServiceRoleCall = bearerToken === serviceRoleKey;
 
     const payload = (await req.json()) as PushPayload;
     const clientId = payload.client_id?.trim();
     const title = payload.title?.trim();
-    const body = payload.body?.trim() ?? "";
     if (!clientId) return json(400, { error: "client_id required" });
     if (!title) return json(400, { error: "title required" });
 
@@ -78,16 +79,41 @@ Deno.serve(async (req: Request) => {
     const clientRow = clientRowRaw as ClientRow | null;
     if (!clientRow) return json(404, { error: "Client not found" });
 
-    const callerId = userData.user.id.toLowerCase();
-    const memberUserId = clientRow.user_id.toLowerCase();
-    const coachUserId = clientRow.coach_id?.toLowerCase() ?? null;
-    const callerRole = userData.user.user_metadata?.role;
-    const callerCanNotify =
-      callerId === memberUserId ||
-      callerId === coachUserId ||
-      callerRole === "admin";
-    if (!callerCanNotify) {
-      return json(403, { error: "Caller is not related to this client" });
+    if (!isCronCall && !isServiceRoleCall) {
+      const { data: userData, error: userErr } = await adminClient.auth.getUser(bearerToken);
+      if (userErr || !userData.user) {
+        return json(401, { error: "Invalid session" });
+      }
+      const callerId = userData.user.id.toLowerCase();
+      const memberUserId = clientRow.user_id.toLowerCase();
+      const coachUserId = clientRow.coach_id?.toLowerCase() ?? null;
+      const callerRole = userData.user.user_metadata?.role;
+      const callerCanNotify =
+        callerId === memberUserId ||
+        callerId === coachUserId ||
+        callerRole === "admin";
+      if (!callerCanNotify) {
+        return json(403, { error: "Caller is not related to this client" });
+      }
+    }
+
+    return await deliverPush(adminClient, payload, clientRow);
+  } catch (e) {
+    return json(500, { error: String(e) });
+  }
+});
+
+async function deliverPush(
+  adminClient: ReturnType<typeof createClient>,
+  payload: PushPayload,
+  clientRow: ClientRow,
+): Promise<Response> {
+  try {
+    const clientId = payload.client_id?.trim();
+    const title = payload.title?.trim();
+    const body = payload.body?.trim() ?? "";
+    if (!clientId || !title) {
+      return json(400, { error: "client_id and title required" });
     }
 
     const recipientUserId = payload.visible_to_client === false
@@ -140,7 +166,6 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log("device_push_result", {
-      callerId,
       recipientUserId,
       tokenCount: tokens?.length ?? 0,
       sent,
@@ -264,11 +289,21 @@ async function sendApns(
 }
 
 function pushData(payload: PushPayload): Record<string, string> {
+  const kind = payload.kind ?? "";
+  const refType = payload.ref_type ?? "";
+  const deepLink =
+    kind === "payment_reminder" ||
+      kind === "payment" ||
+      kind === "payment_confirmation" ||
+      refType === "payment"
+      ? "payments"
+      : "";
   return {
     client_id: payload.client_id ?? "",
-    kind: payload.kind ?? "",
-    ref_type: payload.ref_type ?? "",
+    kind,
+    ref_type: refType,
     ref_id: payload.ref_id ?? "",
+    deep_link: deepLink,
   };
 }
 

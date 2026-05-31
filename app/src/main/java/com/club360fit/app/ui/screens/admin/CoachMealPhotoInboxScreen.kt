@@ -1,16 +1,27 @@
 package com.club360fit.app.ui.screens.admin
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -26,11 +37,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.club360fit.app.data.ClientDto
 import com.club360fit.app.data.MealPhotoLogDto
 import com.club360fit.app.data.MealPhotoRepository
 import com.club360fit.app.ui.theme.BurgundyPrimary
+import com.club360fit.app.ui.theme.Club360Glass
+import com.club360fit.app.ui.theme.club360ScreenBackground
 import com.club360fit.app.ui.utils.SubmitResultMessages
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -89,9 +105,15 @@ fun CoachMealPhotoInboxScreen(
         reload()
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { padding ->
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .club360ScreenBackground()
+    ) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            snackbarHost = { SnackbarHost(snackbarHostState) }
+        ) { padding ->
         when {
             loading && groups.isEmpty() -> {
                 Box(
@@ -105,29 +127,31 @@ fun CoachMealPhotoInboxScreen(
             }
 
             error != null && groups.isEmpty() -> {
-                Box(
+                Column(
                     Modifier
                         .fillMaxSize()
                         .padding(padding)
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(horizontal = 18.dp)
                 ) {
+                    MealInboxHeader()
+                    Spacer(Modifier.height(24.dp))
                     Text(error!!, color = MaterialTheme.colorScheme.error)
                 }
             }
 
             groups.isEmpty() -> {
-                Box(
+                Column(
                     Modifier
                         .fillMaxSize()
                         .padding(padding)
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(horizontal = 18.dp)
                 ) {
+                    MealInboxHeader()
+                    Spacer(Modifier.height(24.dp))
                     Text(
                         "No meal photos yet. When clients log meals, they appear here.",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Club360Glass.captionOnGlass
                     )
                 }
             }
@@ -137,25 +161,28 @@ fun CoachMealPhotoInboxScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding),
-                    contentPadding = PaddingValues(16.dp),
+                    contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 28.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     item {
+                        MealInboxHeader()
+                        Spacer(Modifier.height(4.dp))
                         Text(
                             "Review photos from all clients in one place.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = Club360Glass.captionOnGlass
                         )
-                        Spacer(Modifier.height(8.dp))
                     }
                     items(groups, key = { it.clientId }) { group ->
                         Text(
                             group.displayName,
                             style = MaterialTheme.typography.titleMedium,
-                            color = BurgundyPrimary
+                            fontWeight = FontWeight.Bold,
+                            color = Club360Glass.burgundy
                         )
                         Button(
                             onClick = { onOpenClientHub(group.clientId, group.displayName) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Club360Glass.burgundy),
                             modifier = Modifier.padding(vertical = 4.dp)
                         ) {
                             Text("Open client hub")
@@ -187,6 +214,47 @@ fun CoachMealPhotoInboxScreen(
                     }
                 }
             }
+        }
+        }
+    }
+}
+
+@Composable
+private fun MealInboxHeader() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color.White.copy(alpha = 0.5f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Inbox,
+                contentDescription = null,
+                tint = Club360Glass.tealDark,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Meal inbox",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color = Club360Glass.burgundy
+            )
+            Text(
+                text = "Review client meal photos",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Club360Glass.burgundy
+            )
         }
     }
 }

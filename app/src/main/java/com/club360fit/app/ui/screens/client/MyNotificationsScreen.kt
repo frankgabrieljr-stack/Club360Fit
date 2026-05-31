@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.club360fit.app.data.ClientNotificationDto
 import com.club360fit.app.data.ClientNotificationRepository
 import com.club360fit.app.data.formatPaymentInstant
+import com.club360fit.app.ui.navigation.shouldOpenPayments
 import com.club360fit.app.ui.theme.BurgundyPrimary
 import kotlinx.coroutines.launch
 
@@ -44,7 +46,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun MyNotificationsScreen(
     clientId: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenPayments: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf<List<ClientNotificationDto>>(emptyList()) }
@@ -138,6 +141,7 @@ fun MyNotificationsScreen(
 
     selectedNotification?.let { n ->
         val nId = n.id
+        val showOpenPayments = n.shouldOpenPayments()
         AlertDialog(
             onDismissRequest = { selectedNotification = null },
             title = { Text(n.title.ifBlank { "Update" }) },
@@ -154,30 +158,60 @@ fun MyNotificationsScreen(
                 }
             },
             confirmButton = {
-                TextButton(
-                    enabled = nId != null,
-                    onClick = {
-                        val id = nId ?: return@TextButton
-                        scope.launch {
-                            ClientNotificationRepository.markRead(id)
+                if (showOpenPayments) {
+                    TextButton(
+                        onClick = {
                             selectedNotification = null
-                            reload()
+                            nId?.let { id ->
+                                scope.launch {
+                                    ClientNotificationRepository.markRead(id)
+                                    reload()
+                                }
+                            }
+                            onOpenPayments()
                         }
-                    }
-                ) { Text("Mark read") }
+                    ) { Text("Open Payments") }
+                } else {
+                    TextButton(
+                        enabled = nId != null,
+                        onClick = {
+                            val id = nId ?: return@TextButton
+                            scope.launch {
+                                ClientNotificationRepository.markRead(id)
+                                selectedNotification = null
+                                reload()
+                            }
+                        }
+                    ) { Text("Mark read") }
+                }
             },
             dismissButton = {
-                TextButton(
-                    enabled = nId != null,
-                    onClick = {
-                        val id = nId ?: return@TextButton
-                        scope.launch {
-                            ClientNotificationRepository.deleteForMember(id)
-                            selectedNotification = null
-                            reload()
-                        }
+                Row {
+                    if (showOpenPayments) {
+                        TextButton(
+                            enabled = nId != null,
+                            onClick = {
+                                val id = nId ?: return@TextButton
+                                scope.launch {
+                                    ClientNotificationRepository.markRead(id)
+                                    selectedNotification = null
+                                    reload()
+                                }
+                            }
+                        ) { Text("Mark read") }
                     }
-                ) { Text("Delete") }
+                    TextButton(
+                        enabled = nId != null,
+                        onClick = {
+                            val id = nId ?: return@TextButton
+                            scope.launch {
+                                ClientNotificationRepository.deleteForMember(id)
+                                selectedNotification = null
+                                reload()
+                            }
+                        }
+                    ) { Text("Delete") }
+                }
             }
         )
     }

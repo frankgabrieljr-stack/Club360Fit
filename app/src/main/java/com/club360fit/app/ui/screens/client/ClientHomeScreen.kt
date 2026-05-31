@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.club360fit.app.data.MealPlanDto
 import com.club360fit.app.data.PushRegistrationRepository
+import com.club360fit.app.ui.navigation.NotificationDeepLink
 import com.club360fit.app.data.WorkoutPlanDto
 import com.club360fit.app.ui.theme.BurgundyPrimary
 import com.club360fit.app.ui.utils.toDisplayDate
@@ -77,6 +78,8 @@ fun ClientHomeScreen(
     onOpenPayments: (String) -> Unit,
     onOpenHabits: (String) -> Unit,
     onOpenNotifications: (String) -> Unit,
+    pendingDeepLink: String? = null,
+    onPendingDeepLinkConsumed: () -> Unit = {},
     viewModel: ClientHomeViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -88,6 +91,13 @@ fun ClientHomeScreen(
     LaunchedEffect(Unit) {
         viewModel.loadData()
         PushRegistrationRepository.syncAndroidFcmTokenIfPossible(context)
+    }
+
+    LaunchedEffect(pendingDeepLink, clientId) {
+        if (pendingDeepLink == NotificationDeepLink.PAYMENTS && clientId != null) {
+            onOpenPayments(clientId)
+            onPendingDeepLinkConsumed()
+        }
     }
 
     Column(

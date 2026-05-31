@@ -39,7 +39,11 @@ import kotlinx.coroutines.launch
  * Root navigation graph. Welcome -> Auth (Sign In / Create Account) -> Client or Admin home.
  */
 @Composable
-fun Club360FitNavHost(startDestination: String = Routes.WELCOME) {
+fun Club360FitNavHost(
+    startDestination: String = Routes.WELCOME,
+    pendingDeepLink: String? = null,
+    onPendingDeepLinkConsumed: () -> Unit = {}
+) {
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
 
@@ -93,7 +97,9 @@ fun Club360FitNavHost(startDestination: String = Routes.WELCOME) {
                 onOpenSchedule = { id -> navController.navigate("${Routes.MY_SCHEDULE}/$id") },
                 onOpenPayments = { id -> navController.navigate("${Routes.MY_PAYMENTS}/$id") },
                 onOpenHabits = { id -> navController.navigate("${Routes.MY_HABITS}/$id") },
-                onOpenNotifications = { id -> navController.navigate("${Routes.MY_NOTIFICATIONS}/$id") }
+                onOpenNotifications = { id -> navController.navigate("${Routes.MY_NOTIFICATIONS}/$id") },
+                pendingDeepLink = pendingDeepLink,
+                onPendingDeepLinkConsumed = onPendingDeepLinkConsumed
             )
         }
         composable("${Routes.MY_WORKOUTS}/{clientId}") { backStackEntry ->
@@ -130,7 +136,15 @@ fun Club360FitNavHost(startDestination: String = Routes.WELCOME) {
         }
         composable("${Routes.MY_NOTIFICATIONS}/{clientId}") { backStackEntry ->
             val clientId = backStackEntry.arguments?.getString("clientId") ?: return@composable
-            MyNotificationsScreen(clientId = clientId, onBack = { navController.popBackStack() })
+            MyNotificationsScreen(
+                clientId = clientId,
+                onBack = { navController.popBackStack() },
+                onOpenPayments = {
+                    navController.navigate("${Routes.MY_PAYMENTS}/$clientId") {
+                        popUpTo("${Routes.MY_NOTIFICATIONS}/$clientId") { inclusive = true }
+                    }
+                }
+            )
         }
         composable(Routes.ADMIN_HOME) {
             AdminHomeScreen(
@@ -140,6 +154,12 @@ fun Club360FitNavHost(startDestination: String = Routes.WELCOME) {
                 },
                 onOpenClientHub = { clientId ->
                     navController.navigate("${Routes.CLIENT_PROFILE}/$clientId")
+                },
+                onOpenClientWorkouts = { clientId ->
+                    navController.navigate("${Routes.CLIENT_WORKOUTS}/$clientId")
+                },
+                onOpenClientMeals = { clientId ->
+                    navController.navigate("${Routes.CLIENT_MEALS}/$clientId")
                 },
                 onSignOut = {
                     scope.launch {

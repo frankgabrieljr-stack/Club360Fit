@@ -46,12 +46,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.club360fit.app.data.ClientPaymentSettingsDto
 import com.club360fit.app.data.PaymentConfirmationDto
 import com.club360fit.app.data.PaymentConfirmationRepository
 import com.club360fit.app.data.PaymentRecordDto
 import com.club360fit.app.data.PaymentRecordRepository
+import com.club360fit.app.data.PaymentReminderHelper
 import com.club360fit.app.data.PaymentSettingsRepository
 import com.club360fit.app.data.formatPaymentInstant
 import com.club360fit.app.ui.theme.BurgundyPrimary
@@ -81,6 +83,7 @@ fun ClientPaymentsScreen(
     var nextDueDate by remember { mutableStateOf<LocalDate?>(null) }
     var nextDueAmount by remember { mutableStateOf("") }
     var nextDueNote by remember { mutableStateOf("") }
+    var dueRecurrence by remember { mutableStateOf("none") }
     var isSaving by remember { mutableStateOf(false) }
 
     var records by remember { mutableStateOf<List<PaymentRecordDto>>(emptyList()) }
@@ -106,6 +109,9 @@ fun ClientPaymentsScreen(
                 nextDueDate = existing?.nextDueDate
                 nextDueAmount = existing?.nextDueAmount.orEmpty()
                 nextDueNote = existing?.nextDueNote.orEmpty()
+                dueRecurrence = existing?.dueRecurrence?.lowercase()?.takeIf {
+                    it in listOf("none", "weekly", "monthly")
+                } ?: "none"
                 records = PaymentRecordRepository.listForClient(clientId)
                 pendingConfirmations = PaymentConfirmationRepository.listPendingForClient(clientId)
             } catch (e: Exception) {
@@ -232,6 +238,30 @@ fun ClientPaymentsScreen(
                     label = { Text("Due note (optional)") },
                     modifier = Modifier.fillMaxWidth()
                 )
+                Text(
+                    text = "Repeat after payment",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = BurgundyPrimary
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("none" to "One-time", "weekly" to "Weekly", "monthly" to "Monthly").forEach { (value, label) ->
+                        val selected = dueRecurrence == value
+                        TextButton(
+                            onClick = { dueRecurrence = value },
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = if (selected) BurgundyPrimary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        ) { Text(label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) }
+                    }
+                }
+                if (dueRecurrence != "none") {
+                    Text(
+                        text = "When you log or approve a payment, the due date moves forward by one ${if (dueRecurrence == "weekly") "week" else "month"}.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
@@ -242,18 +272,19 @@ fun ClientPaymentsScreen(
                         error = null
                         scope.launch {
                             try {
-                                PaymentSettingsRepository.upsert(
-                                    ClientPaymentSettingsDto(
-                                        clientId = clientId,
-                                        venmoUrl = venmoUrl.trim().takeIf { it.isNotBlank() },
-                                        zelleEmail = zelleEmail.trim().takeIf { it.isNotBlank() },
-                                        zellePhone = zellePhone.trim().takeIf { it.isNotBlank() },
-                                        note = note.trim(),
-                                        nextDueDate = nextDueDate,
-                                        nextDueAmount = nextDueAmount.trim().takeIf { it.isNotBlank() },
-                                        nextDueNote = nextDueNote.trim().takeIf { it.isNotBlank() }
-                                    )
+                                val saved = ClientPaymentSettingsDto(
+                                    clientId = clientId,
+                                    venmoUrl = venmoUrl.trim().takeIf { it.isNotBlank() },
+                                    zelleEmail = zelleEmail.trim().takeIf { it.isNotBlank() },
+                                    zellePhone = zellePhone.trim().takeIf { it.isNotBlank() },
+                                    note = note.trim(),
+                                    nextDueDate = nextDueDate,
+                                    nextDueAmount = nextDueAmount.trim().takeIf { it.isNotBlank() },
+                                    nextDueNote = nextDueNote.trim().takeIf { it.isNotBlank() },
+                                    dueRecurrence = dueRecurrence
                                 )
+                                PaymentSettingsRepository.upsert(saved)
+                                PaymentReminderHelper.notifyMemberAfterCoachSave(saved)
                                 snackbarHostState.showSnackbar(
                                     SubmitResultMessages.SAVED_SUCCESS,
                                     duration = SnackbarDuration.Short
@@ -524,7 +555,8 @@ fun ClientPaymentsScreen(
                                     note = logNote,
                                     paidAtLocalDate = logPaidDate
                                 )
-                                records = PaymentRecordRepository.listForClient(clientId)
+                                PaymentSettingsRepository.advanceRecurringDueDate(clientId)
+                                loadAll()
                                 showLogDialog = false
                                 snackbarHostState.showSnackbar(SubmitResultMessages.LOGGED_SUCCESS)
                             } catch (e: Exception) {

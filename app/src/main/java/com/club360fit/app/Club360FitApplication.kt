@@ -8,6 +8,7 @@ import androidx.work.WorkManager
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.club360fit.app.worker.ClientAdherenceWorker
+import com.club360fit.app.worker.PaymentDueReminderWorker
 import com.club360fit.app.worker.ScheduleNotificationWorker
 import java.util.concurrent.TimeUnit
 
@@ -24,6 +25,7 @@ class Club360FitApplication : Application() {
         initializeFirebaseIfConfigured()
         scheduleNotificationWorker()
         scheduleClientAdherenceWorker()
+        schedulePaymentDueReminderWorker()
     }
 
     private fun initializeFirebaseIfConfigured() {
@@ -71,6 +73,16 @@ class Club360FitApplication : Application() {
             .build()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "client_adherence",
+            ExistingPeriodicWorkPolicy.KEEP,
+            request
+        )
+    }
+
+    private fun schedulePaymentDueReminderWorker() {
+        val request = PeriodicWorkRequestBuilder<PaymentDueReminderWorker>(12, TimeUnit.HOURS)
+            .build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "payment_due_reminders",
             ExistingPeriodicWorkPolicy.KEEP,
             request
         )

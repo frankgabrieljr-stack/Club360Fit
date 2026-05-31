@@ -371,8 +371,8 @@ fun ClientProfileScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
                 WideCategoryTile(
-                    title = "Payments",
-                    subtitle = "Venmo / Zelle settings",
+                    title = "Payment setup",
+                    subtitle = "Due dates, Venmo / Zelle, reminders",
                     icon = Icons.Default.Payments,
                     enabled = idForNav != null,
                     onClick = { idForNav?.let(onOpenPayments) }

@@ -50,8 +50,8 @@ android {
         applicationId = "com.club360fit.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.4.0"
+        versionCode = 9
+        versionName = "1.5.0"
 
         // Must match iOS AppConfig.supabaseURL and Supabase Dashboard → Settings → API → Project URL.
         // Wrong ref fails DNS ("Unable to resolve host"). Correct ref ends with …ahxtxvxq (not …ahxtvxvq).

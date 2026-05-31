@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.club360fit.app.data.ClientDto
 import com.club360fit.app.data.ClientRepository
+import com.club360fit.app.data.PaymentReminderHelper
 import com.club360fit.app.data.ClientNotificationRepository
 import com.club360fit.app.data.ProfileRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,6 +56,7 @@ class AdminHomeViewModel : ViewModel() {
                     isLoading = false
                 )
                 refreshCoachUnread()
+                PaymentReminderHelper.remindCoachOfClientsDueToday()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,

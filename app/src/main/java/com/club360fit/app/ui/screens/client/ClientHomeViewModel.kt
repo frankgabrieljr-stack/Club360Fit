@@ -9,6 +9,7 @@ import com.club360fit.app.data.ClientSelfRepository
 import com.club360fit.app.data.MealPlanDto
 import com.club360fit.app.data.MealPlanRepository
 import com.club360fit.app.data.ProgressCheckInDto
+import com.club360fit.app.data.PaymentReminderHelper
 import com.club360fit.app.data.ProgressRepository
 import com.club360fit.app.data.ScheduleEvent
 import com.club360fit.app.data.ScheduleRepository
@@ -104,6 +105,7 @@ class ClientHomeViewModel : ViewModel() {
                     adherence = adherence,
                     unreadNotifications = unread
                 )
+                PaymentReminderHelper.remindMemberIfDueSoon(clientId, client.canViewPayments)
             } catch (e: Exception) {
                 _uiState.value = ClientHomeUiState(
                     isLoading = false,

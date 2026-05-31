@@ -130,6 +130,7 @@ struct ClientPaymentSettingsDTO: Decodable, Sendable {
     let nextDueDate: String?
     let nextDueAmount: String?
     let nextDueNote: String?
+    let dueRecurrence: String?
 
     enum CodingKeys: String, CodingKey {
         case clientId = "client_id"
@@ -140,6 +141,7 @@ struct ClientPaymentSettingsDTO: Decodable, Sendable {
         case nextDueDate = "next_due_date"
         case nextDueAmount = "next_due_amount"
         case nextDueNote = "next_due_note"
+        case dueRecurrence = "due_recurrence"
     }
 
     init(from decoder: Decoder) throws {
@@ -152,6 +154,7 @@ struct ClientPaymentSettingsDTO: Decodable, Sendable {
         nextDueDate = try c.decodeIfPresent(String.self, forKey: .nextDueDate)
         nextDueAmount = try c.decodeIfPresent(String.self, forKey: .nextDueAmount)
         nextDueNote = try c.decodeIfPresent(String.self, forKey: .nextDueNote)
+        dueRecurrence = try c.decodeIfPresent(String.self, forKey: .dueRecurrence)
     }
 }
 

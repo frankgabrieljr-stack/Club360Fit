@@ -179,6 +179,13 @@ final class ClientHomeViewModel {
         memberWorkoutFrequency = Self.clean(row.workoutFrequency)
         memberGoal = Self.clean(row.goal)
         memberProfileSummaryLine = row.memberSummaryLine
+
+        if !useCoachNotificationUnread {
+            await PaymentReminderService.remindMemberIfDueSoon(
+                clientId: cid,
+                canViewPayments: row.canViewPayments
+            )
+        }
     }
 
     private func resetSummary() {

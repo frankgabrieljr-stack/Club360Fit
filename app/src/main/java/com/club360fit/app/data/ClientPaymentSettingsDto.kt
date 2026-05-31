@@ -16,6 +16,8 @@ data class ClientPaymentSettingsDto(
     @SerialName("next_due_date") val nextDueDate: LocalDate? = null,
     @SerialName("next_due_amount") val nextDueAmount: String? = null,
     @SerialName("next_due_note") val nextDueNote: String? = null,
+    /** `none`, `weekly`, or `monthly` — advances [nextDueDate] after payment logged/approved. */
+    @SerialName("due_recurrence") val dueRecurrence: String = "none",
     @SerialName("updated_at") val updatedAt: String? = null
 )
 
