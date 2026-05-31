@@ -16,6 +16,12 @@ struct CoachMainHubView: View {
     @State private var fullScreenPlans: ClientRef?
     @State private var coachUnreadNotifications = 0
 
+    @State private var hubSessionActions: ScheduleEventDTO?
+    @State private var hubNoteSession: ScheduleEventDTO?
+    @State private var hubDeleteSessionId: String?
+    @State private var hubActionBusy = false
+    @State private var hubActionError: String?
+
     private let upcomingHorizonDays = 7
 
     var body: some View {
@@ -179,6 +185,54 @@ struct CoachMainHubView: View {
                 }
             }
         }
+        .sheet(item: $hubSessionActions) { ev in
+            HubSessionActionsSheet(
+                event: ev,
+                clientName: ev.clientId.flatMap { clientNameMap[$0] },
+                isBusy: hubActionBusy,
+                onMarkComplete: { Task { await hubMarkComplete(ev, completed: true) } },
+                onMarkIncomplete: { Task { await hubMarkComplete(ev, completed: false) } },
+                onAddNote: {
+                    hubNoteSession = ev
+                    hubSessionActions = nil
+                },
+                onDelete: {
+                    hubDeleteSessionId = ev.rowId
+                    hubSessionActions = nil
+                },
+                onDismiss: { hubSessionActions = nil }
+            )
+        }
+        .sheet(item: $hubNoteSession) { ev in
+            HubSessionNoteSheet(
+                event: ev,
+                isBusy: hubActionBusy,
+                onSave: { notes in
+                    Task { await hubSaveNote(ev, notes: notes) }
+                },
+                onDismiss: { hubNoteSession = nil }
+            )
+        }
+        .alert("Delete session?", isPresented: Binding(
+            get: { hubDeleteSessionId != nil },
+            set: { if !$0 { hubDeleteSessionId = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { hubDeleteSessionId = nil }
+            Button("Delete", role: .destructive) {
+                guard let id = hubDeleteSessionId else { return }
+                Task { await hubDeleteSession(id: id) }
+            }
+        } message: {
+            Text("Remove this session from the calendar? This cannot be undone.")
+        }
+        .alert("Could not update session", isPresented: Binding(
+            get: { hubActionError != nil },
+            set: { if !$0 { hubActionError = nil } }
+        )) {
+            Button("OK", role: .cancel) { hubActionError = nil }
+        } message: {
+            Text(hubActionError ?? "")
+        }
     }
 
     private var hubHeader: some View {
@@ -315,6 +369,70 @@ struct CoachMainHubView: View {
         coachUnreadNotifications = (try? await ClientDataService.unreadNotificationCountForCoach()) ?? 0
     }
 
+    private func hubMarkComplete(_ ev: ScheduleEventDTO, completed: Bool) async {
+        guard let rid = ev.rowId, !rid.isEmpty, let cid = ev.clientId, !cid.isEmpty else {
+            hubActionError = "Missing session or client id."
+            return
+        }
+        hubActionBusy = true
+        defer { hubActionBusy = false }
+        do {
+            let day = Club360DateFormats.postgresDay.date(from: ev.date) ?? Date()
+            try await ClientDataService.coachUpdateScheduleEvent(
+                id: rid,
+                clientId: cid,
+                title: ev.title,
+                date: day,
+                time: ev.time,
+                notes: ev.notes ?? "",
+                isCompleted: completed
+            )
+            hubSessionActions = nil
+            await reloadOverview()
+        } catch {
+            hubActionError = error.localizedDescription
+        }
+    }
+
+    private func hubSaveNote(_ ev: ScheduleEventDTO, notes: String) async {
+        guard let rid = ev.rowId, !rid.isEmpty, let cid = ev.clientId, !cid.isEmpty else {
+            hubActionError = "Missing session or client id."
+            return
+        }
+        hubActionBusy = true
+        defer { hubActionBusy = false }
+        do {
+            let day = Club360DateFormats.postgresDay.date(from: ev.date) ?? Date()
+            try await ClientDataService.coachUpdateScheduleEvent(
+                id: rid,
+                clientId: cid,
+                title: ev.title,
+                date: day,
+                time: ev.time,
+                notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
+                isCompleted: ev.isCompleted
+            )
+            hubNoteSession = nil
+            await reloadOverview()
+        } catch {
+            hubActionError = error.localizedDescription
+        }
+    }
+
+    private func hubDeleteSession(id: String) async {
+        hubActionBusy = true
+        defer {
+            hubActionBusy = false
+            hubDeleteSessionId = nil
+        }
+        do {
+            try await ClientDataService.coachDeleteScheduleEvent(id: id)
+            await reloadOverview()
+        } catch {
+            hubActionError = error.localizedDescription
+        }
+    }
+
     private var eventsOnSelectedDay: some View {
         let key = Club360DateFormats.dayString(selectedDay)
         let dayEvents = overview.scheduleEvents.filter { $0.date == key }
@@ -331,29 +449,15 @@ struct CoachMainHubView: View {
                     .foregroundStyle(Club360Theme.captionOnGlass)
             } else {
                 ForEach(dayEvents, id: \.id) { ev in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(ev.time)
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(Club360Theme.tealDark)
-                            if let cid = ev.clientId, let name = overview.clientNameById[cid] {
-                                Text(name)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(Club360Theme.captionOnGlass)
-                            }
-                        }
-                        Text(ev.title)
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(Club360Theme.cardTitle)
-                        if ev.isCompleted {
-                            Text("Done")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(Club360Theme.mintDeep)
-                        }
+                    Button {
+                        hubSessionActions = ev
+                    } label: {
+                        HubSessionCard(
+                            event: ev,
+                            clientName: ev.clientId.flatMap { overview.clientNameById[$0] }
+                        )
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .club360Glass(cornerRadius: 18)
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -494,6 +598,229 @@ private struct ClientPickerSheet: View {
     }
 }
 
+// MARK: - Hub session card & actions
+
+private struct HubSessionCard: View {
+    let event: ScheduleEventDTO
+    let clientName: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                HStack(spacing: 8) {
+                    if !event.time.isEmpty {
+                        Text(event.time)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Club360Theme.burgundy)
+                    }
+                    if let clientName, !clientName.isEmpty {
+                        Text(clientName)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Club360Theme.captionOnGlass)
+                    }
+                }
+                Spacer()
+                Image(systemName: "ellipsis")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Club360Theme.captionOnGlass)
+            }
+            Text(event.title)
+                .font(.body.weight(.medium))
+                .foregroundStyle(Club360Theme.cardTitle)
+                .multilineTextAlignment(.leading)
+            if let notes = event.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
+                Text(notes)
+                    .font(.caption)
+                    .foregroundStyle(Club360Theme.captionOnGlass)
+                    .lineLimit(2)
+            }
+            if event.isCompleted {
+                Text("Done")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Club360Theme.teal)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .club360Glass(cornerRadius: 18)
+    }
+}
+
+private struct HubSessionActionsSheet: View {
+    let event: ScheduleEventDTO
+    let clientName: String?
+    var isBusy: Bool = false
+    let onMarkComplete: () -> Void
+    let onMarkIncomplete: () -> Void
+    let onAddNote: () -> Void
+    let onDelete: () -> Void
+    let onDismiss: () -> Void
+
+    private var noteLabel: String {
+        let n = (event.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return n.isEmpty ? "Add note" : "Edit note"
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Session")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Club360Theme.captionOnGlass)
+                    Text(event.title)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Club360Theme.cardTitle)
+                    Text(sessionMeta)
+                        .font(.footnote)
+                        .foregroundStyle(Club360Theme.captionOnGlass)
+                    if let notes = event.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
+                        Text(notes)
+                            .font(.footnote)
+                            .foregroundStyle(Club360Theme.cardTitle)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+
+                if let rid = event.rowId, !rid.isEmpty {
+                    VStack(spacing: 10) {
+                        if !event.isCompleted {
+                            hubActionButton(
+                                title: "Mark complete",
+                                systemImage: "checkmark.circle.fill",
+                                role: nil,
+                                action: onMarkComplete
+                            )
+                        } else {
+                            hubActionButton(
+                                title: "Mark incomplete",
+                                systemImage: "arrow.uturn.backward.circle",
+                                role: nil,
+                                action: onMarkIncomplete
+                            )
+                        }
+                        hubActionButton(
+                            title: noteLabel,
+                            systemImage: "note.text",
+                            role: nil,
+                            action: onAddNote
+                        )
+                        hubActionButton(
+                            title: "Delete session",
+                            systemImage: "trash",
+                            role: .destructive,
+                            action: onDelete
+                        )
+                    }
+                    .padding(.horizontal, 18)
+                } else {
+                    Text("This session cannot be updated in the app (missing id).")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 20)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .navigationTitle("Session")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: onDismiss)
+                        .disabled(isBusy)
+                }
+            }
+            .overlay {
+                if isBusy {
+                    ProgressView()
+                        .tint(Club360Theme.burgundy)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var sessionMeta: String {
+        var parts: [String] = []
+        if !event.time.isEmpty { parts.append(event.time) }
+        if let clientName, !clientName.isEmpty { parts.append(clientName) }
+        parts.append(Club360DateFormats.displayDay(fromPostgresDay: event.date))
+        return parts.joined(separator: " · ")
+    }
+
+    private func hubActionButton(
+        title: String,
+        systemImage: String,
+        role: ButtonRole?,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(role: role, action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.body.weight(.semibold))
+                    .frame(width: 24)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+            }
+            .foregroundStyle(role == .destructive ? Color.red : Club360Theme.burgundy)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .club360Glass(cornerRadius: 16)
+        }
+        .buttonStyle(.plain)
+        .disabled(isBusy)
+    }
+}
+
+private struct HubSessionNoteSheet: View {
+    let event: ScheduleEventDTO
+    var isBusy: Bool = false
+    let onSave: (String) -> Void
+    let onDismiss: () -> Void
+
+    @State private var notes: String = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Coach note", text: $notes, axis: .vertical)
+                        .lineLimit(3 ... 8)
+                } footer: {
+                    Text("Visible on this session in your calendar and hub.")
+                }
+            }
+            .navigationTitle((event.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Add note" : "Edit note")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: onDismiss)
+                        .disabled(isBusy)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isBusy ? "Saving…" : "Save") {
+                        onSave(notes)
+                    }
+                    .disabled(isBusy || event.rowId == nil)
+                }
+            }
+            .onAppear {
+                notes = event.notes ?? ""
+            }
+            .overlay {
+                if isBusy {
+                    ProgressView()
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
 // MARK: - Stat tile (tap)
 
 private struct CoachStatButton: View {
@@ -512,7 +839,7 @@ private struct CoachStatButton: View {
                     .foregroundStyle(Club360Theme.captionOnGlass)
                 Text(value)
                     .font(.title.weight(.bold))
-                    .foregroundStyle(tint)
+                    .foregroundStyle(Club360Theme.burgundy)
                 Text(subtitle)
                     .font(.caption2)
                     .foregroundStyle(Club360Theme.captionOnGlass)

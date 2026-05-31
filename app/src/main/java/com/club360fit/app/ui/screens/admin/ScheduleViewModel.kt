@@ -150,6 +150,17 @@ class ScheduleViewModel : ViewModel() {
         }
     }
 
+    fun markIncomplete(event: ScheduleEvent) {
+        viewModelScope.launch {
+            try {
+                ScheduleRepository.updateEvent(event.copy(isCompleted = false))
+                showSnackbar("Marked incomplete", isError = false)
+            } catch (e: Exception) {
+                showSnackbar(SubmitResultMessages.failure(e), isError = true)
+            }
+        }
+    }
+
     private fun showSnackbar(message: String, isError: Boolean) {
         _snackbarMessage.value = message
         _snackbarIsError.value = isError

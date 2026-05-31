@@ -28,6 +28,8 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -927,7 +929,8 @@ fun OverviewTab(
             HubSelectedDaySessions(
                 selectedDay = selectedDay,
                 events = events.filter { it.date == selectedDay }.sortedBy { it.time },
-                clientNameById = clientNameById
+                clientNameById = clientNameById,
+                scheduleViewModel = scheduleViewModel
             )
         }
 
@@ -1011,7 +1014,7 @@ private fun CoachStatTile(
             text = value,
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
-            color = tint
+            color = Club360Glass.burgundy
         )
         Text(
             text = subtitle,
@@ -1177,74 +1180,354 @@ private fun CoachHubCalendarStrip(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HubSelectedDaySessions(
     selectedDay: LocalDate,
     events: List<ScheduleEvent>,
-    clientNameById: Map<String, String>
+    clientNameById: Map<String, String>,
+    scheduleViewModel: ScheduleViewModel
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            text = "Sessions on ${selectedDay.toDisplayDate()}",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = Club360Glass.cardTitle
-        )
-        if (events.isEmpty()) {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarMessage by scheduleViewModel.snackbarMessage.collectAsState()
+
+    var sessionForActions by remember { mutableStateOf<ScheduleEvent?>(null) }
+    var sessionForNote by remember { mutableStateOf<ScheduleEvent?>(null) }
+    var sessionToDelete by remember { mutableStateOf<ScheduleEvent?>(null) }
+
+    LaunchedEffect(snackbarMessage) {
+        val msg = snackbarMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(msg)
+        scheduleViewModel.clearScheduleSnackbar()
+    }
+
+    Box {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
-                text = "No sessions.",
-                style = MaterialTheme.typography.bodySmall,
-                color = Club360Glass.captionOnGlass
+                text = "Sessions on ${selectedDay.toDisplayDate()}",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = Club360Glass.cardTitle
             )
-        } else {
-            events.forEach { ev ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .club360Glass(cornerRadius = 18)
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (ev.time.isNotBlank()) {
-                            Text(
-                                text = ev.time,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Club360Glass.tealDark
-                            )
-                        }
-                        val name = ev.clientId?.let { clientNameById[it] }
-                        if (!name.isNullOrBlank()) {
-                            Text(
-                                text = name,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Club360Glass.captionOnGlass
-                            )
-                        }
-                    }
-                    Text(
-                        text = ev.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = Club360Glass.cardTitle
+            if (events.isEmpty()) {
+                Text(
+                    text = "No sessions.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Club360Glass.captionOnGlass
+                )
+            } else {
+                events.forEach { ev ->
+                    HubSessionCard(
+                        event = ev,
+                        clientName = ev.clientId?.let { clientNameById[it] },
+                        onClick = { sessionForActions = ev }
                     )
-                    if (ev.isCompleted) {
-                        Text(
-                            text = "Done",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Club360Glass.taupe
-                        )
-                    }
                 }
             }
         }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
+
+    sessionForActions?.let { ev ->
+        HubSessionActionsSheet(
+            event = ev,
+            clientName = ev.clientId?.let { clientNameById[it] },
+            onDismiss = { sessionForActions = null },
+            onMarkComplete = {
+                scheduleViewModel.markCompleted(ev)
+                sessionForActions = null
+            },
+            onMarkIncomplete = {
+                scheduleViewModel.markIncomplete(ev)
+                sessionForActions = null
+            },
+            onAddNote = {
+                sessionForNote = ev
+                sessionForActions = null
+            },
+            onDelete = {
+                sessionToDelete = ev
+                sessionForActions = null
+            }
+        )
+    }
+
+    sessionForNote?.let { ev ->
+        HubSessionNoteDialog(
+            event = ev,
+            onDismiss = { sessionForNote = null },
+            onSave = { notes ->
+                scheduleViewModel.updateEvent(ev.copy(notes = notes.trim()))
+                sessionForNote = null
+            }
+        )
+    }
+
+    sessionToDelete?.let { ev ->
+        val id = ev.id
+        if (id != null) {
+            AlertDialog(
+                onDismissRequest = { sessionToDelete = null },
+                title = { Text("Delete session?") },
+                text = {
+                    Text("Remove \"${ev.title}\" from the calendar? This cannot be undone.")
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            scheduleViewModel.deleteEvent(id)
+                            sessionToDelete = null
+                        }
+                    ) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { sessionToDelete = null }) { Text("Cancel") }
+                }
+            )
+        } else {
+            sessionToDelete = null
+        }
+    }
+}
+
+@Composable
+private fun HubSessionCard(
+    event: ScheduleEvent,
+    clientName: String?,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .club360Glass(cornerRadius = 18)
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (event.time.isNotBlank()) {
+                    Text(
+                        text = event.time,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Club360Glass.burgundy
+                    )
+                }
+                if (!clientName.isNullOrBlank()) {
+                    Text(
+                        text = clientName,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Club360Glass.captionOnGlass
+                    )
+                }
+            }
+            Icon(
+                imageVector = Icons.Default.MoreVert,
+                contentDescription = "Session actions",
+                tint = Club360Glass.captionOnGlass,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Text(
+            text = event.title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = Club360Glass.cardTitle
+        )
+        if (event.notes.isNotBlank()) {
+            Text(
+                text = event.notes,
+                style = MaterialTheme.typography.bodySmall,
+                color = Club360Glass.captionOnGlass,
+                maxLines = 2
+            )
+        }
+        if (event.isCompleted) {
+            Text(
+                text = "Done",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = Club360Glass.taupe
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HubSessionActionsSheet(
+    event: ScheduleEvent,
+    clientName: String?,
+    onDismiss: () -> Unit,
+    onMarkComplete: () -> Unit,
+    onMarkIncomplete: () -> Unit,
+    onAddNote: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val noteLabel = if (event.notes.isBlank()) "Add note" else "Edit note"
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Club360Glass.cream
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "Session",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Club360Glass.captionOnGlass
+                )
+                Text(
+                    text = event.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Club360Glass.cardTitle
+                )
+                val meta = buildList {
+                    if (event.time.isNotBlank()) add(event.time)
+                    if (!clientName.isNullOrBlank()) add(clientName)
+                    add(event.date.toDisplayDate())
+                }.joinToString(" · ")
+                Text(
+                    text = meta,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Club360Glass.captionOnGlass
+                )
+                if (event.notes.isNotBlank()) {
+                    Text(
+                        text = event.notes,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Club360Glass.cardTitle
+                    )
+                }
+            }
+
+            if (event.id.isNullOrBlank()) {
+                Text(
+                    text = "This session cannot be updated in the app (missing id).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            } else {
+                if (!event.isCompleted) {
+                    HubSessionActionRow(
+                        label = "Mark complete",
+                        icon = Icons.Default.Check,
+                        onClick = onMarkComplete
+                    )
+                } else {
+                    HubSessionActionRow(
+                        label = "Mark incomplete",
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        onClick = onMarkIncomplete
+                    )
+                }
+                HubSessionActionRow(
+                    label = noteLabel,
+                    icon = Icons.Default.Edit,
+                    onClick = onAddNote
+                )
+                HubSessionActionRow(
+                    label = "Delete session",
+                    icon = Icons.Default.Delete,
+                    tint = MaterialTheme.colorScheme.error,
+                    onClick = onDelete
+                )
+            }
+
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            ) {
+                Text("Cancel", color = Club360Glass.captionOnGlass)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HubSessionActionRow(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    tint: Color = Club360Glass.burgundy
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .club360Glass(cornerRadius = 16)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = tint)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = tint
+        )
+    }
+}
+
+@Composable
+private fun HubSessionNoteDialog(
+    event: ScheduleEvent,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var notes by remember(event.id) { mutableStateOf(event.notes) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (event.notes.isBlank()) "Add note" else "Edit note") },
+        text = {
+            OutlinedTextField(
+                value = notes,
+                onValueChange = { notes = it },
+                label = { Text("Coach note") },
+                placeholder = { Text("e.g. outdoor walk, parking lot B") },
+                minLines = 3,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(notes) },
+                enabled = event.id != null
+            ) {
+                Text("Save", color = Club360Glass.burgundy)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable
