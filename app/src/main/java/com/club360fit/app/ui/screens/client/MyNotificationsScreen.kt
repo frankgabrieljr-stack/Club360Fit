@@ -38,7 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.club360fit.app.data.ClientNotificationDto
 import com.club360fit.app.data.ClientNotificationRepository
 import com.club360fit.app.data.formatPaymentInstant
-import com.club360fit.app.ui.navigation.shouldOpenPayments
+import com.club360fit.app.ui.navigation.memberDeepLink
 import com.club360fit.app.ui.theme.BurgundyPrimary
 import kotlinx.coroutines.launch
 
@@ -47,6 +47,8 @@ import kotlinx.coroutines.launch
 fun MyNotificationsScreen(
     clientId: String,
     onBack: () -> Unit,
+    onOpenDeepLink: (String) -> Unit = {},
+    /** @deprecated Prefer [onOpenDeepLink] */
     onOpenPayments: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
@@ -141,7 +143,18 @@ fun MyNotificationsScreen(
 
     selectedNotification?.let { n ->
         val nId = n.id
-        val showOpenPayments = n.shouldOpenPayments()
+        val deepLink = n.memberDeepLink()
+        val openLabel = when (deepLink) {
+            com.club360fit.app.ui.navigation.NotificationDeepLink.PAYMENTS -> "Open Payments"
+            com.club360fit.app.ui.navigation.NotificationDeepLink.COMMUNITY -> "Open Community"
+            com.club360fit.app.ui.navigation.NotificationDeepLink.MEAL_PHOTOS -> "Open Meal photos"
+            com.club360fit.app.ui.navigation.NotificationDeepLink.SCHEDULE -> "Open Schedule"
+            com.club360fit.app.ui.navigation.NotificationDeepLink.WORKOUTS -> "Open Workouts"
+            com.club360fit.app.ui.navigation.NotificationDeepLink.MEALS -> "Open Meals"
+            com.club360fit.app.ui.navigation.NotificationDeepLink.PROGRESS -> "Open Progress"
+            com.club360fit.app.ui.navigation.NotificationDeepLink.HABITS -> "Open Habits"
+            else -> null
+        }
         AlertDialog(
             onDismissRequest = { selectedNotification = null },
             title = { Text(n.title.ifBlank { "Update" }) },
@@ -158,7 +171,7 @@ fun MyNotificationsScreen(
                 }
             },
             confirmButton = {
-                if (showOpenPayments) {
+                if (openLabel != null && deepLink != null) {
                     TextButton(
                         onClick = {
                             selectedNotification = null
@@ -168,9 +181,12 @@ fun MyNotificationsScreen(
                                     reload()
                                 }
                             }
-                            onOpenPayments()
+                            onOpenDeepLink(deepLink)
+                            if (deepLink == com.club360fit.app.ui.navigation.NotificationDeepLink.PAYMENTS) {
+                                onOpenPayments()
+                            }
                         }
-                    ) { Text("Open Payments") }
+                    ) { Text(openLabel) }
                 } else {
                     TextButton(
                         enabled = nId != null,
@@ -187,7 +203,7 @@ fun MyNotificationsScreen(
             },
             dismissButton = {
                 Row {
-                    if (showOpenPayments) {
+                    if (openLabel != null) {
                         TextButton(
                             enabled = nId != null,
                             onClick = {

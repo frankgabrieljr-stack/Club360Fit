@@ -1,5 +1,6 @@
 package com.club360fit.app.ui.screens.admin
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -7,9 +8,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -25,12 +28,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.club360fit.app.data.MealPhotoLogDto
 import com.club360fit.app.data.MealPhotoRepository
+import com.club360fit.app.data.needsCoachFeedback
+import com.club360fit.app.data.resolvedSlot
 import com.club360fit.app.ui.theme.BurgundyPrimary
 import com.club360fit.app.ui.utils.toDisplayDate
 import kotlinx.coroutines.launch
@@ -49,7 +56,8 @@ fun MealPhotoReviewCard(
     clientId: String,
     item: MealPhotoLogDto,
     onSaved: () -> Unit,
-    onError: (String) -> Unit
+    onError: (String) -> Unit,
+    showsDateHeadline: Boolean = true
 ) {
     val scope = rememberCoroutineScope()
     val logId = item.id
@@ -58,12 +66,37 @@ fun MealPhotoReviewCard(
         draft = item.coachFeedback.orEmpty()
     }
     var saving by remember { mutableStateOf(false) }
+    val slot = item.resolvedSlot
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(item.logDate.toDisplayDate(), style = MaterialTheme.typography.titleSmall, color = BurgundyPrimary)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                slot.label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = BurgundyPrimary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(BurgundyPrimary.copy(alpha = 0.12f))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+            Text(
+                if (item.needsCoachFeedback) "Needs review" else "Reviewed",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = if (item.needsCoachFeedback) BurgundyPrimary else MaterialTheme.colorScheme.tertiary
+            )
+        }
+        if (showsDateHeadline) {
+            Text(item.logDate.toDisplayDate(), style = MaterialTheme.typography.titleSmall, color = BurgundyPrimary)
+        }
         if (!item.notes.isNullOrBlank()) {
             Text("Client: ${item.notes.orEmpty()}", style = MaterialTheme.typography.bodySmall)
         }
@@ -75,7 +108,8 @@ fun MealPhotoReviewCard(
             contentDescription = "Client meal photo",
             modifier = Modifier
                 .fillMaxWidth()
-                .height(240.dp)
+                .height(176.dp)
+                .clip(RoundedCornerShape(16.dp))
         )
 
         Text("Coach feedback", style = MaterialTheme.typography.labelLarge, color = BurgundyPrimary)

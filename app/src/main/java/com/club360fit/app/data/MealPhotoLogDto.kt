@@ -13,6 +13,7 @@ data class MealPhotoLogDto(
     @SerialName("storage_path") val storagePath: String,
     /** DB may return JSON null; treat as empty in UI via .orEmpty() */
     val notes: String? = null,
+    @SerialName("meal_slot") val mealSlot: String? = "other",
     @SerialName("created_at") val createdAt: String? = null,
     /** Coach feedback on this meal (portion, balance, etc.). */
     @SerialName("coach_feedback") val coachFeedback: String? = null,

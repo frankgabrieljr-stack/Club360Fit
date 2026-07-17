@@ -47,6 +47,14 @@ final class ClientHomeViewModel {
     /// First day the client record existed (`clients.created_at`), for date pickers (e.g. daily habits).
     var memberSinceStartOfDay: Date?
 
+    /// Assigned coach auth user id (`clients.coach_id`). Nil until a coach claims the member.
+    var coachId: String?
+
+    var hasAssignedCoach: Bool {
+        guard let coachId else { return false }
+        return !coachId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// Unread client notifications (Android home badge). Uses member `read_at` or coach `coach_read_at` per `useCoachNotificationUnread`.
     var unreadNotifications = 0
 
@@ -127,6 +135,7 @@ final class ClientHomeViewModel {
         canViewNutrition = row.canViewNutrition
         canViewEvents = row.canViewEvents
         canViewPayments = row.canViewPayments
+        coachId = row.coachId
 
         async let workouts = ClientDataService.fetchWorkoutPlans(clientId: cid)
         async let meals = ClientDataService.fetchMealPlans(clientId: cid)
@@ -141,8 +150,9 @@ final class ClientHomeViewModel {
             unreadNotifications = (try? await ClientDataService.unreadNotificationCount(clientId: cid)) ?? 0
         }
 
+        // Coaches reviewing a hub always load schedule; members only when access is on.
         let events: [ScheduleEventDTO]
-        if row.canViewEvents {
+        if useCoachNotificationUnread || row.canViewEvents {
             events = try await ClientDataService.fetchScheduleEvents(clientId: cid)
         } else {
             events = []
@@ -203,6 +213,7 @@ final class ClientHomeViewModel {
         memberWorkoutFrequency = nil
         memberGoal = nil
         memberSinceStartOfDay = nil
+        coachId = nil
         welcomeName = "there"
         currentWorkoutTitle = nil
         workoutPlanCount = 0

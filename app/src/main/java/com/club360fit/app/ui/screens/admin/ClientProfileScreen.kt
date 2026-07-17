@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Person
@@ -100,7 +101,10 @@ fun ClientProfileScreen(
     onOpenMeals: (String) -> Unit,
     onOpenProgress: (String) -> Unit,
     onOpenSchedule: (String) -> Unit,
-    onOpenPayments: (String) -> Unit
+    onOpenPayments: (String) -> Unit,
+    displayTitleOverride: String? = null,
+    showOnboardingChecklist: Boolean = false,
+    onOpenPlansHub: (clientId: String, displayTitle: String) -> Unit = { _, _ -> }
 ) {
     val factory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -120,6 +124,9 @@ fun ClientProfileScreen(
     var showTransferConfirm by remember { mutableStateOf(false) }
     var showTransferSuccess by remember { mutableStateOf(false) }
     var showCoachDirectory by remember { mutableStateOf(false) }
+    var showClaimChecklist by remember(showOnboardingChecklist) {
+        mutableStateOf(showOnboardingChecklist)
+    }
 
     var workoutPlans by remember { mutableStateOf<List<WorkoutPlanDto>>(emptyList()) }
     var mealPlans by remember { mutableStateOf<List<MealPlanDto>>(emptyList()) }
@@ -157,7 +164,8 @@ fun ClientProfileScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    val name = state.client.fullName?.takeIf { it.isNotBlank() }
+                    val name = displayTitleOverride?.takeIf { it.isNotBlank() }
+                        ?: state.client.fullName?.takeIf { it.isNotBlank() }
                     Text(name ?: if (clientId == null) "New Client" else "Client Profile")
                 },
                 navigationIcon = {
@@ -323,8 +331,31 @@ fun ClientProfileScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Tiles (2-column layout)
                 val idForNav = c.id
+                val displayTitle = displayTitleOverride?.takeIf { it.isNotBlank() }
+                    ?: c.fullName?.takeIf { it.isNotBlank() }
+                    ?: "Client"
+
+                WideCategoryTile(
+                    title = "Plans & schedule",
+                    subtitle = "Assign workouts, meals, and sessions",
+                    icon = Icons.Default.CalendarMonth,
+                    enabled = idForNav != null,
+                    onClick = {
+                        idForNav?.let { onOpenPlansHub(it, displayTitle) }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Review",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = BurgundyPrimary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Tiles (2-column layout)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -650,6 +681,46 @@ fun ClientProfileScreen(
                 }
             }
         }
+    }
+    if (showClaimChecklist) {
+        val clientName = displayTitleOverride?.takeIf { it.isNotBlank() }
+            ?: state.client.fullName?.takeIf { it.isNotBlank() }
+            ?: "Client"
+        AlertDialog(
+            onDismissRequest = { showClaimChecklist = false },
+            title = { Text("Client claimed") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "$clientName is on your roster",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Suggested next steps:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text("1. Member settings — turn on Workouts, Meals, Schedule, Payments as needed")
+                    Text("2. Plans & schedule — assign a workout or meal plan and first session")
+                    Text("3. Payment setup — Venmo/Zelle and next due date")
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showClaimChecklist = false
+                        val id = clientId ?: return@TextButton
+                        onOpenPlansHub(id, clientName)
+                    }
+                ) { Text("Open Plans & schedule") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClaimChecklist = false }) {
+                    Text("I'll do this later")
+                }
+            }
+        )
     }
     if (showCoachDirectory) {
         CoachDirectoryScreen(

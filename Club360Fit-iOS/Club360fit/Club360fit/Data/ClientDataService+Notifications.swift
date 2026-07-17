@@ -75,6 +75,11 @@ extension ClientDataService {
         try? await insertClientNotification(row)
     }
 
+    /// Device push only (notification row already inserted, e.g. by a DB trigger).
+    static func triggerDevicePushForNotification(_ row: ClientNotificationInsert) async {
+        try? await triggerDevicePush(row)
+    }
+
     private static func triggerDevicePush(_ row: ClientNotificationInsert) async throws {
         let payload = DevicePushPayload(
             client_id: row.clientId,

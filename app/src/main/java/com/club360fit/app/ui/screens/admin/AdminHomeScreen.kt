@@ -1,9 +1,11 @@
 package com.club360fit.app.ui.screens.admin
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -57,10 +59,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.club360fit.app.R
 import com.club360fit.app.data.ClientDto
+import com.club360fit.app.data.MealPhotoRepository
 import com.club360fit.app.data.MealPlanRepository
 import com.club360fit.app.data.PushRegistrationRepository
 import com.club360fit.app.data.ScheduleEvent
 import com.club360fit.app.data.WorkoutPlanRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.club360fit.app.ui.theme.BurgundyPrimary
 import com.club360fit.app.ui.theme.Club360FitTheme
 import com.club360fit.app.ui.theme.Club360Glass
@@ -82,8 +87,11 @@ fun AdminHomeScreen(
     onOpenCoachNotifications: () -> Unit,
     onOpenClientProfile: (String?) -> Unit,
     onOpenClientHub: (String) -> Unit,
+    onOpenClientHubClaimed: (clientId: String, displayTitle: String) -> Unit = { id, _ -> onOpenClientHub(id) },
     onOpenClientWorkouts: (String) -> Unit,
     onOpenClientMeals: (String) -> Unit,
+    onOpenPlansHub: (clientId: String, displayTitle: String, tab: CoachPlansHubTab) -> Unit = { _, _, _ -> },
+    onOpenCommunity: () -> Unit = {},
     onSignOut: () -> Unit,
     viewModel: AdminHomeViewModel = viewModel()
 ) {
@@ -98,6 +106,18 @@ fun AdminHomeScreen(
     val assignedClients = state.clients.filter { it.coachId != null }
     val newClients = state.clients.filter { it.coachId == null }
     var moreDestination by remember { mutableStateOf<AdminMoreDestination?>(null) }
+    var mealNeedsReviewCount by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(assignedClients.map { it.id }) {
+        mealNeedsReviewCount = withContext(Dispatchers.IO) {
+            assignedClients.sumOf { c ->
+                val id = c.id ?: return@sumOf 0
+                runCatching {
+                    MealPhotoRepository.listForClient(id).count { it.coachFeedback.isNullOrBlank() }
+                }.getOrDefault(0)
+            }
+        }
+    }
 
     LaunchedEffect(selectedTab) {
         if (selectedTab != 0) hubShowSchedule = false
@@ -160,7 +180,17 @@ fun AdminHomeScreen(
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
+                    icon = {
+                        BadgedBox(
+                            badge = {
+                                if (newClients.isNotEmpty()) {
+                                    Badge { Text("${newClients.size}") }
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.PersonAdd, contentDescription = null)
+                        }
+                    },
                     label = { Text("New clients") },
                     colors = navItemColors
                 )
@@ -174,7 +204,17 @@ fun AdminHomeScreen(
                 NavigationBarItem(
                     selected = selectedTab == 4,
                     onClick = { selectedTab = 4 },
-                    icon = { Icon(Icons.Default.Restaurant, contentDescription = null) },
+                    icon = {
+                        BadgedBox(
+                            badge = {
+                                if (mealNeedsReviewCount > 0) {
+                                    Badge { Text("$mealNeedsReviewCount") }
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.Restaurant, contentDescription = null)
+                        }
+                    },
                     label = { Text("Meal inbox") },
                     colors = navItemColors
                 )
@@ -248,11 +288,16 @@ fun AdminHomeScreen(
                     2 -> NewClientsTab(
                         clients = newClients,
                         profileRolesByUserId = state.profileRolesByUserId,
-                        onClaim = viewModel::claimClient
+                        onClaim = { id, name ->
+                            viewModel.claimClient(id) {
+                                onOpenClientHubClaimed(id, name)
+                            }
+                        }
                     )
                     3 -> ClientsTab(
                         viewModel = viewModel,
-                        onOpenProfile = onOpenClientProfile
+                        onOpenProfile = onOpenClientProfile,
+                        onQuickAssign = { id, name, tab -> onOpenPlansHub(id, name, tab) }
                     )
                     4 -> CoachMealPhotoInboxScreen(
                         clients = assignedClients,
@@ -271,6 +316,7 @@ fun AdminHomeScreen(
                             onOpenCoachDirectory = { showCoachDirectory = true }
                         )
                         null -> AdminMoreTab(
+                            onOpenCommunity = onOpenCommunity,
                             onOpenGallery = { moreDestination = AdminMoreDestination.Gallery },
                             onOpenProfile = { moreDestination = AdminMoreDestination.Profile }
                         )
@@ -589,6 +635,7 @@ private fun AdminScheduleEventSummaryCard(
 
 @Composable
 private fun AdminMoreTab(
+    onOpenCommunity: () -> Unit,
     onOpenGallery: () -> Unit,
     onOpenProfile: () -> Unit
 ) {
@@ -602,10 +649,16 @@ private fun AdminMoreTab(
     ) {
         TabHeader(
             title = "More",
-            subtitle = "Gallery and profile",
+            subtitle = "Community, gallery, and profile",
             icon = Icons.Default.MoreVert
         )
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            AdminMoreOptionCard(
+                title = "Community",
+                subtitle = "Browse peer posts and reply as coach",
+                icon = Icons.Default.Groups,
+                onClick = onOpenCommunity
+            )
             AdminMoreOptionCard(
                 title = "Gallery",
                 subtitle = "Transformation gallery",
@@ -1604,7 +1657,8 @@ private fun ClientPickerDialog(
 @Composable
 fun ClientsTab(
     viewModel: AdminHomeViewModel = viewModel(),
-    onOpenProfile: (String?) -> Unit
+    onOpenProfile: (String?) -> Unit,
+    onQuickAssign: (clientId: String, displayTitle: String, tab: CoachPlansHubTab) -> Unit = { _, _, _ -> }
 ) {
     val state by viewModel.uiState.collectAsState()
     val assignedClients = state.clients.filter { it.coachId != null }
@@ -1615,7 +1669,7 @@ fun ClientsTab(
     ) {
         TabHeader(
             title = "Coach",
-            subtitle = "Clients",
+            subtitle = "Clients · long-press for quick assign",
             useLogo = true
         )
         Spacer(Modifier.height(16.dp))
@@ -1661,8 +1715,9 @@ fun ClientsTab(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(assignedClients, key = { it.id ?: it.userId }) { client ->
+                            val title = client.fullName ?: "(no name)"
                             ClientCard(
-                                fullName = client.fullName ?: "(no name)",
+                                fullName = title,
                                 goal = client.goal ?: "",
                                 lastActive = client.lastActive ?: "Never",
                                 subtitle = "Plans, meals, progress",
@@ -1671,7 +1726,11 @@ fun ClientsTab(
                                 heightCm = client.heightCm,
                                 weightKg = client.weightKg,
                                 onClick = { client.id?.let { onOpenProfile(it) } },
-                                onDelete = { client.id?.let { viewModel.deleteClient(it) } }
+                                onDelete = { client.id?.let { viewModel.deleteClient(it) } },
+                                onQuickAssign = { tab ->
+                                    val id = client.id ?: return@ClientCard
+                                    onQuickAssign(id, title, tab)
+                                }
                             )
                         }
                     }
@@ -1685,7 +1744,7 @@ fun ClientsTab(
 fun NewClientsTab(
     clients: List<ClientDto>,
     profileRolesByUserId: Map<String, String>,
-    onClaim: (String) -> Unit
+    onClaim: (clientId: String, displayTitle: String) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1715,7 +1774,8 @@ fun NewClientsTab(
                     client = client,
                     platformRole = profileRolesByUserId[client.userId],
                     onClaim = {
-                        client.id?.let(onClaim)
+                        val id = client.id ?: return@NewClientCard
+                        onClaim(id, client.fullName ?: "(no name)")
                     }
                 )
             }
@@ -1779,6 +1839,7 @@ private fun NewClientCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ClientCard(
     fullName: String,
@@ -1791,10 +1852,12 @@ fun ClientCard(
     heightCm: Int? = null,
     weightKg: Int? = null,
     onClick: () -> Unit,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    onQuickAssign: ((CoachPlansHubTab) -> Unit)? = null
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
-    
+    var showQuickMenu by remember { mutableStateOf(false) }
+
     if (showDeleteDialog && onDelete != null) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -1811,69 +1874,100 @@ fun ClientCard(
         )
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .club360Glass(cornerRadius = 28)
-            .clickable(onClick = onClick)
-            .padding(18.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = fullName,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = Club360Glass.cardTitle
-            )
-            platformRole?.let { raw ->
-                val label = if (raw.equals("admin", ignoreCase = true)) {
-                    "App login: Admin"
-                } else {
-                    "App login: Client"
-                }
-                Spacer(Modifier.height(2.dp))
+    Box {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .club360Glass(cornerRadius = 28)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = { if (onQuickAssign != null) showQuickMenu = true }
+                )
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelSmall,
+                    text = fullName,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (raw.equals("admin", ignoreCase = true)) Club360Glass.tealDark
-                    else Club360Glass.captionOnGlass
-                )
-            }
-            if (subtitle.isNotBlank()) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Club360Glass.captionOnGlass
-                )
-            }
-            val memberSummary = buildClientMemberSummaryLine(age, heightCm, weightKg, goal)
-            if (memberSummary.isNotBlank()) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = memberSummary,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium,
                     color = Club360Glass.cardTitle
+                )
+                platformRole?.let { raw ->
+                    val label = if (raw.equals("admin", ignoreCase = true)) {
+                        "App login: Admin"
+                    } else {
+                        "App login: Client"
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (raw.equals("admin", ignoreCase = true)) Club360Glass.tealDark
+                        else Club360Glass.captionOnGlass
+                    )
+                }
+                if (subtitle.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Club360Glass.captionOnGlass
+                    )
+                }
+                val memberSummary = buildClientMemberSummaryLine(age, heightCm, weightKg, goal)
+                if (memberSummary.isNotBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = memberSummary,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = Club360Glass.cardTitle
+                    )
+                }
+            }
+            if (onDelete != null) {
+                IconButton(onClick = { showDeleteDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete",
+                        tint = Club360Glass.peachDeep
+                    )
+                }
+            } else {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = Club360Glass.captionOnGlass,
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
-        if (onDelete != null) {
-            IconButton(onClick = { showDeleteDialog = true }) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Delete",
-                    tint = Club360Glass.peachDeep
-                )
-            }
-        } else {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = null,
-                tint = Club360Glass.captionOnGlass,
-                modifier = Modifier.size(16.dp)
+        DropdownMenu(
+            expanded = showQuickMenu,
+            onDismissRequest = { showQuickMenu = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("Add session") },
+                onClick = {
+                    showQuickMenu = false
+                    onQuickAssign?.invoke(CoachPlansHubTab.SCHEDULE)
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Workout plan") },
+                onClick = {
+                    showQuickMenu = false
+                    onQuickAssign?.invoke(CoachPlansHubTab.WORKOUTS)
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Meal plan") },
+                onClick = {
+                    showQuickMenu = false
+                    onQuickAssign?.invoke(CoachPlansHubTab.MEALS)
+                }
             )
         }
     }

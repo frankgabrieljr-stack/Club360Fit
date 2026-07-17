@@ -79,11 +79,12 @@ class AdminHomeViewModel : ViewModel() {
         }
     }
 
-    fun claimClient(id: String) {
+    fun claimClient(id: String, onSuccess: (() -> Unit)? = null) {
         viewModelScope.launch {
             try {
                 ClientRepository.claimCoachAssignmentIfNeeded(id)
                 loadClients()
+                onSuccess?.invoke()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     error = e.message ?: "Failed to claim client"

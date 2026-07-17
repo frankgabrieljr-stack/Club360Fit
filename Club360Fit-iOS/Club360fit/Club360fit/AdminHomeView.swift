@@ -3,6 +3,8 @@ import SwiftUI
 
 /// Coach / admin shell — client list, gallery, and account (mirrors Android `AdminHomeScreen` tabs).
 struct AdminHomeView: View {
+    @State private var badges = AdminTabBadgesModel()
+
     var body: some View {
         TabView {
             NavigationStack {
@@ -15,6 +17,7 @@ struct AdminHomeView: View {
 
             AdminNewClientsTab()
                 .tabItem { Label("New clients", systemImage: "person.badge.plus") }
+                .badge(badges.newClientCount)
 
             AdminClientsTab()
                 .tabItem { Label("My clients", systemImage: "person.3.fill") }
@@ -23,6 +26,7 @@ struct AdminHomeView: View {
                 CoachMealPhotoInboxView()
             }
             .tabItem { Label("Meal inbox", systemImage: "tray.full") }
+            .badge(badges.mealNeedsReviewCount)
 
             NavigationStack {
                 TransformationGalleryView()
@@ -36,6 +40,32 @@ struct AdminHomeView: View {
         }
         .tint(Club360Theme.burgundy)
         .preferredColorScheme(.light)
+        .task {
+            await badges.refresh()
+        }
+        .onAppear {
+            Task { await badges.refresh() }
+        }
+    }
+}
+
+@Observable
+@MainActor
+private final class AdminTabBadgesModel {
+    var newClientCount = 0
+    var mealNeedsReviewCount = 0
+
+    func refresh() async {
+        async let clientsTask = ClientDataService.fetchClientsForCoach()
+        async let mealsTask = ClientDataService.listMealPhotoLogsForCoachInbox()
+        let clients = (try? await clientsTask) ?? []
+        let meals = (try? await mealsTask) ?? []
+        newClientCount = clients.filter {
+            $0.coachId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
+        }.count
+        mealNeedsReviewCount = meals.filter {
+            ($0.coachFeedback ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }.count
     }
 }
 
@@ -104,7 +134,10 @@ private struct AdminScheduleTab: View {
                                     subtitle: Club360DateFormats.displayDay(from: Date()),
                                     emptyTitle: "No sessions today",
                                     events: todaysEvents,
-                                    clientNameById: model.clientNameById
+                                    clientNameById: model.clientNameById,
+                                    onEventsChanged: {
+                                        await model.load(coachUserId: auth.session?.user.id.uuidString)
+                                    }
                                 )
                             } label: {
                                 AdminScheduleOptionRow(
@@ -121,7 +154,10 @@ private struct AdminScheduleTab: View {
                                     subtitle: weekSubtitle,
                                     emptyTitle: "No sessions this week",
                                     events: weekEvents,
-                                    clientNameById: model.clientNameById
+                                    clientNameById: model.clientNameById,
+                                    onEventsChanged: {
+                                        await model.load(coachUserId: auth.session?.user.id.uuidString)
+                                    }
                                 )
                             } label: {
                                 AdminScheduleOptionRow(
@@ -199,8 +235,33 @@ private struct AdminScheduleListView: View {
     let title: String
     let subtitle: String
     let emptyTitle: String
-    let events: [ScheduleEventDTO]
     let clientNameById: [String: String]
+    var onEventsChanged: (() async -> Void)? = nil
+
+    @State private var events: [ScheduleEventDTO]
+    @State private var completionOverride: [String: Bool] = [:]
+    @State private var sessionActions: ScheduleEventDTO?
+    @State private var noteSession: ScheduleEventDTO?
+    @State private var deleteSessionId: String?
+    @State private var actionBusy = false
+    @State private var actionError: String?
+    @State private var openPlansClient: AdminQuickAssignRef?
+
+    init(
+        title: String,
+        subtitle: String,
+        emptyTitle: String,
+        events: [ScheduleEventDTO],
+        clientNameById: [String: String],
+        onEventsChanged: (() async -> Void)? = nil
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.emptyTitle = emptyTitle
+        self.clientNameById = clientNameById
+        self.onEventsChanged = onEventsChanged
+        _events = State(initialValue: events)
+    }
 
     var body: some View {
         ZStack {
@@ -226,11 +287,20 @@ private struct AdminScheduleListView: View {
                         )
                         .padding(.top, 24)
                     } else {
+                        Text("Tap a session to complete, add a note, delete, or open Plans.")
+                            .font(.footnote)
+                            .foregroundStyle(Club360Theme.captionOnGlass)
                         ForEach(events, id: \.id) { event in
-                            AdminScheduleEventRow(
-                                event: event,
-                                clientName: event.clientId.flatMap { clientNameById[$0] }
-                            )
+                            Button {
+                                sessionActions = event
+                            } label: {
+                                AdminScheduleEventRow(
+                                    event: event,
+                                    clientName: event.clientId.flatMap { clientNameById[$0] },
+                                    isCompleted: completionOverride[event.id] ?? event.isCompleted
+                                )
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -241,12 +311,169 @@ private struct AdminScheduleListView: View {
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        .sheet(item: $sessionActions) { ev in
+            HubSessionActionsSheet(
+                event: ev,
+                clientName: ev.clientId.flatMap { clientNameById[$0] },
+                isBusy: actionBusy,
+                isCompletedOverride: completionOverride[ev.id],
+                onMarkComplete: { Task { await markComplete(ev, completed: true) } },
+                onMarkIncomplete: { Task { await markComplete(ev, completed: false) } },
+                onAddNote: {
+                    noteSession = ev
+                    sessionActions = nil
+                },
+                onDelete: {
+                    deleteSessionId = ev.rowId
+                    sessionActions = nil
+                },
+                onDismiss: { sessionActions = nil }
+            )
+            .safeAreaInset(edge: .bottom) {
+                if let cid = ev.clientId, !cid.isEmpty {
+                    Button {
+                        sessionActions = nil
+                        openPlansClient = AdminQuickAssignRef(
+                            clientId: cid,
+                            name: clientNameById[cid] ?? "Client",
+                            initialTab: .schedule
+                        )
+                    } label: {
+                        Text("Open Plans & schedule")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    }
+                    .tint(Club360Theme.tealDark)
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 8)
+                }
+            }
+        }
+        .sheet(item: $noteSession) { ev in
+            HubSessionNoteSheet(
+                event: ev,
+                isBusy: actionBusy,
+                onSave: { notes in Task { await saveNote(ev, notes: notes) } },
+                onDismiss: { noteSession = nil }
+            )
+        }
+        .fullScreenCover(item: $openPlansClient) { ref in
+            NavigationStack {
+                CoachPlansHubView(
+                    clientId: ref.clientId,
+                    displayTitle: ref.name,
+                    initialTab: ref.initialTab
+                )
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") { openPlansClient = nil }
+                    }
+                }
+            }
+        }
+        .alert("Delete session?", isPresented: Binding(
+            get: { deleteSessionId != nil },
+            set: { if !$0 { deleteSessionId = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { deleteSessionId = nil }
+            Button("Delete", role: .destructive) {
+                guard let id = deleteSessionId else { return }
+                Task { await deleteSession(id: id) }
+            }
+        } message: {
+            Text("Remove this session from the calendar? This cannot be undone.")
+        }
+        .alert("Could not update session", isPresented: Binding(
+            get: { actionError != nil },
+            set: { if !$0 { actionError = nil } }
+        )) {
+            Button("OK", role: .cancel) { actionError = nil }
+        } message: {
+            Text(actionError ?? "")
+        }
     }
+
+    private func markComplete(_ ev: ScheduleEventDTO, completed: Bool) async {
+        guard let rid = ev.rowId, !rid.isEmpty, let cid = ev.clientId, !cid.isEmpty else {
+            actionError = "Missing session or client id."
+            return
+        }
+        actionBusy = true
+        defer { actionBusy = false }
+        do {
+            let day = Club360DateFormats.postgresDay.date(from: ev.date) ?? Date()
+            try await ClientDataService.coachUpdateScheduleEvent(
+                id: rid,
+                clientId: cid,
+                title: ev.title,
+                date: day,
+                time: ev.time,
+                notes: ev.notes ?? "",
+                isCompleted: completed
+            )
+            sessionActions = nil
+            completionOverride[ev.id] = completed
+            await onEventsChanged?()
+        } catch {
+            actionError = error.localizedDescription
+        }
+    }
+
+    private func saveNote(_ ev: ScheduleEventDTO, notes: String) async {
+        guard let rid = ev.rowId, !rid.isEmpty, let cid = ev.clientId, !cid.isEmpty else {
+            actionError = "Missing session or client id."
+            return
+        }
+        actionBusy = true
+        defer { actionBusy = false }
+        do {
+            let day = Club360DateFormats.postgresDay.date(from: ev.date) ?? Date()
+            try await ClientDataService.coachUpdateScheduleEvent(
+                id: rid,
+                clientId: cid,
+                title: ev.title,
+                date: day,
+                time: ev.time,
+                notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
+                isCompleted: ev.isCompleted
+            )
+            noteSession = nil
+            await onEventsChanged?()
+        } catch {
+            actionError = error.localizedDescription
+        }
+    }
+
+    private func deleteSession(id: String) async {
+        actionBusy = true
+        defer {
+            actionBusy = false
+            deleteSessionId = nil
+        }
+        do {
+            try await ClientDataService.coachDeleteScheduleEvent(id: id)
+            events.removeAll { $0.rowId == id }
+            await onEventsChanged?()
+        } catch {
+            actionError = error.localizedDescription
+        }
+    }
+}
+
+private struct AdminQuickAssignRef: Identifiable {
+    let clientId: String
+    let name: String
+    let initialTab: CoachPlansHubTab
+    var id: String { "\(clientId)-\(initialTab.rawValue)" }
 }
 
 private struct AdminScheduleEventRow: View {
     let event: ScheduleEventDTO
     let clientName: String?
+    var isCompleted: Bool? = nil
+
+    private var showDone: Bool { isCompleted ?? event.isCompleted }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -258,7 +485,7 @@ private struct AdminScheduleEventRow: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Club360Theme.captionOnGlass)
                 Spacer()
-                if event.isCompleted {
+                if showDone {
                     Text("Done")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(Club360Theme.mintDeep)
@@ -357,6 +584,7 @@ private final class AdminScheduleModel {
 
 private struct AdminClientsTab: View {
     @State private var model = AdminViewModel()
+    @State private var quickAssign: AdminQuickAssignRef?
 
     var body: some View {
         NavigationStack {
@@ -394,17 +622,29 @@ private struct AdminClientsTab: View {
 
                         ForEach(model.assignedClients, id: \.stableId) { client in
                             if let cid = client.id, !cid.isEmpty {
+                                let title = AdminViewModel.listTitle(for: client)
                                 NavigationLink {
-                                    AdminClientHubView(clientId: cid, displayTitle: AdminViewModel.listTitle(for: client))
+                                    AdminClientHubView(clientId: cid, displayTitle: title)
                                 } label: {
                                     AdminClientRow(
-                                        title: AdminViewModel.listTitle(for: client),
+                                        title: title,
                                         subtitle: "Plans, meals, progress",
                                         memberSummary: client.memberSummaryLine,
                                         platformRole: model.profileRolesByUserId[client.userId]
                                     )
                                 }
                                 .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button("Add session") {
+                                        quickAssign = AdminQuickAssignRef(clientId: cid, name: title, initialTab: .schedule)
+                                    }
+                                    Button("Workout plan") {
+                                        quickAssign = AdminQuickAssignRef(clientId: cid, name: title, initialTab: .workouts)
+                                    }
+                                    Button("Meal plan") {
+                                        quickAssign = AdminQuickAssignRef(clientId: cid, name: title, initialTab: .meals)
+                                    }
+                                }
                             } else {
                                 AdminClientRow(title: AdminViewModel.listTitle(for: client), subtitle: "Missing client id — check Supabase")
                                     .opacity(0.55)
@@ -423,6 +663,20 @@ private struct AdminClientsTab: View {
             }
             .refreshable {
                 await model.load()
+            }
+            .fullScreenCover(item: $quickAssign) { ref in
+                NavigationStack {
+                    CoachPlansHubView(
+                        clientId: ref.clientId,
+                        displayTitle: ref.name,
+                        initialTab: ref.initialTab
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { quickAssign = nil }
+                        }
+                    }
+                }
             }
         }
     }
@@ -448,9 +702,16 @@ private struct AdminClientsTab: View {
     }
 }
 
+private struct ClaimedClientNav: Identifiable, Hashable {
+    let id: String
+    let displayTitle: String
+    var showOnboardingChecklist: Bool = true
+}
+
 private struct AdminNewClientsTab: View {
     @State private var model = AdminViewModel()
     @State private var claimingClientId: String?
+    @State private var claimedNav: ClaimedClientNav?
 
     var body: some View {
         NavigationStack {
@@ -472,6 +733,15 @@ private struct AdminNewClientsTab: View {
                                 Text("Review intake and claim members")
                                     .font(.title3.weight(.semibold))
                                     .foregroundStyle(Club360Theme.burgundy)
+                            }
+                            Spacer()
+                            if !model.newClients.isEmpty {
+                                Text("\(model.newClients.count)")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Club360Theme.peachDeep, in: Capsule())
                             }
                         }
                         .padding(.top, 4)
@@ -509,9 +779,11 @@ private struct AdminNewClientsTab: View {
                                 onClaim: {
                                     guard let cid = client.id, !cid.isEmpty else { return }
                                     claimingClientId = cid
+                                    let title = AdminViewModel.listTitle(for: client)
                                     Task {
                                         await model.claimClient(cid)
                                         claimingClientId = nil
+                                        claimedNav = ClaimedClientNav(id: cid, displayTitle: title)
                                     }
                                 }
                             )
@@ -524,6 +796,13 @@ private struct AdminNewClientsTab: View {
             .navigationTitle("New clients")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .navigationDestination(item: $claimedNav) { nav in
+                AdminClientHubView(
+                    clientId: nav.id,
+                    displayTitle: nav.displayTitle,
+                    showOnboardingChecklist: nav.showOnboardingChecklist
+                )
+            }
             .task {
                 await model.load()
             }
@@ -627,6 +906,7 @@ private struct NewClientClaimRow: View {
 struct AdminClientHubView: View {
     let clientId: String
     let displayTitle: String
+    var showOnboardingChecklist: Bool = false
 
     @Environment(\.dismiss) private var dismiss
     @Environment(Club360AuthSession.self) private var auth
@@ -650,6 +930,9 @@ struct AdminClientHubView: View {
     @State private var showTransferConfirm = false
     @State private var showCoachDirectorySheet = false
     @State private var showTransferSuccess = false
+    @State private var showClaimChecklist = false
+    @State private var pendingOpenPlans = false
+    @State private var navigateToPlans = false
 
     var body: some View {
         Group {
@@ -681,8 +964,13 @@ struct AdminClientHubView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink {
-                    MyNotificationsView(inbox: .coach)
-                        .environment(homeModel)
+                    CoachHubNotificationsView(
+                        clientNameById: [clientId: displayTitle],
+                        initialClientId: clientId,
+                        onUnreadChanged: {
+                            Task { await homeModel.reloadNotificationsCount() }
+                        }
+                    )
                 } label: {
                     ZStack(alignment: .topTrailing) {
                         Image(systemName: "bell.fill")
@@ -708,6 +996,31 @@ struct AdminClientHubView: View {
         }
         .onAppear {
             Task { await homeModel.reloadNotificationsCount() }
+            if showOnboardingChecklist {
+                showClaimChecklist = true
+            }
+        }
+        .sheet(isPresented: $showClaimChecklist, onDismiss: {
+            guard pendingOpenPlans else { return }
+            pendingOpenPlans = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                navigateToPlans = true
+            }
+        }) {
+            ClaimOnboardingChecklistSheet(
+                clientName: displayTitle,
+                onOpenPlans: {
+                    pendingOpenPlans = true
+                    showClaimChecklist = false
+                },
+                onDismiss: {
+                    pendingOpenPlans = false
+                    showClaimChecklist = false
+                }
+            )
+        }
+        .navigationDestination(isPresented: $navigateToPlans) {
+            CoachPlansHubView(clientId: clientId, displayTitle: displayTitle)
         }
     }
 
@@ -736,6 +1049,34 @@ struct AdminClientHubView: View {
                         }
                     }
                     .padding(.top, 4)
+
+                    NavigationLink {
+                        CoachPlansHubView(clientId: clientId, displayTitle: displayTitle)
+                    } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "calendar.badge.plus")
+                                .font(.title2.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                                .background(Club360Theme.primaryButtonGradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Plans & schedule")
+                                    .font(.headline.weight(.semibold))
+                                    .foregroundStyle(Club360Theme.cardTitle)
+                                Text("Assign workouts, meals, and sessions")
+                                    .font(.caption)
+                                    .foregroundStyle(Club360Theme.captionOnGlass)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Club360Theme.captionOnGlass)
+                        }
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .club360Glass(cornerRadius: 24)
+                    }
+                    .buttonStyle(.plain)
 
                     VStack(alignment: .leading, spacing: 14) {
                         Text("Client details")
@@ -783,32 +1124,13 @@ struct AdminClientHubView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .club360Glass(cornerRadius: 22)
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .center, spacing: 10) {
-                            Image(systemName: "square.grid.2x2.fill")
-                                .foregroundStyle(Club360Theme.tealDark)
-                            Text("Assignments")
-                                .font(.subheadline.weight(.bold))
-                                .foregroundStyle(Club360Theme.cardTitle)
-                        }
-                        Text("Create and assign workout plans, meal plans, and sessions from the Hub tab. Use the tiles below to review what’s assigned for \(homeModel.welcomeName).")
-                            .font(.footnote)
-                            .foregroundStyle(Club360Theme.captionOnGlass)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(18)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .club360Glass(cornerRadius: 28)
-
-                    Text("Tools")
+                    Text("Review")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(Club360Theme.cardTitle)
                         .textCase(.uppercase)
                         .tracking(0.8)
 
-                    if homeModel.canViewEvents {
-                        adminNextSessionCard
-                    }
+                    adminNextSessionCard
 
                     LazyVGrid(
                         columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
@@ -825,8 +1147,6 @@ struct AdminClientHubView: View {
                                 accent: Club360Theme.burgundyLight
                             )
                         }
-                        .disabled(!homeModel.canViewWorkouts)
-                        .opacity(homeModel.canViewWorkouts ? 1 : 0.45)
 
                         NavigationLink {
                             MyMealsView(isCoachReviewing: true)
@@ -839,8 +1159,6 @@ struct AdminClientHubView: View {
                                 accent: Club360Theme.teal
                             )
                         }
-                        .disabled(!homeModel.canViewNutrition)
-                        .opacity(homeModel.canViewNutrition ? 1 : 0.45)
 
                         NavigationLink {
                             MyProgressView(isCoachReviewing: true)
@@ -866,18 +1184,16 @@ struct AdminClientHubView: View {
                             )
                         }
 
-                        if homeModel.canViewEvents {
-                            NavigationLink {
-                                MyScheduleView()
-                                    .environment(homeModel)
-                            } label: {
-                                Club360HomeTile(
-                                    title: "Schedule",
-                                    subtitle: scheduleSubtitle,
-                                    systemImage: "calendar.badge.clock",
-                                    accent: Club360Theme.burgundy
-                                )
-                            }
+                        NavigationLink {
+                            MyScheduleView()
+                                .environment(homeModel)
+                        } label: {
+                            Club360HomeTile(
+                                title: "Schedule",
+                                subtitle: scheduleSubtitle,
+                                systemImage: "calendar.badge.clock",
+                                accent: Club360Theme.burgundy
+                            )
                         }
 
                         NavigationLink {
@@ -891,18 +1207,16 @@ struct AdminClientHubView: View {
                             )
                         }
 
-                        if homeModel.canViewPayments {
-                            NavigationLink {
-                                MyPaymentsView(isCoachReviewing: true)
-                                    .environment(homeModel)
-                            } label: {
-                                Club360HomeTile(
-                                    title: "Payments",
-                                    subtitle: "Review client view",
-                                    systemImage: "banknote.fill",
-                                    accent: Club360Theme.burgundy
-                                )
-                            }
+                        NavigationLink {
+                            MyPaymentsView(isCoachReviewing: true)
+                                .environment(homeModel)
+                        } label: {
+                            Club360HomeTile(
+                                title: "Payments",
+                                subtitle: homeModel.canViewPayments ? "Approve · history" : "Hidden from member",
+                                systemImage: "banknote.fill",
+                                accent: Club360Theme.burgundy
+                            )
                         }
 
                         NavigationLink {
@@ -1309,19 +1623,19 @@ struct AdminClientHubView: View {
     }
 
     private var workoutSubtitle: String {
-        guard homeModel.canViewWorkouts else { return "Disabled for this client" }
         if let t = homeModel.currentWorkoutTitle {
             return "Current: \(t) · \(homeModel.workoutPlanCount) plan\(homeModel.workoutPlanCount == 1 ? "" : "s")"
         }
-        return homeModel.isLoading ? "…" : "Plans & sessions"
+        let accessNote = homeModel.canViewWorkouts ? "" : " · hidden from member"
+        return (homeModel.isLoading ? "…" : "Plans & sessions") + accessNote
     }
 
     private var mealSubtitle: String {
-        guard homeModel.canViewNutrition else { return "Disabled for this client" }
         if let t = homeModel.currentMealTitle {
             return "Current: \(t) · \(homeModel.mealPlanCount) plan\(homeModel.mealPlanCount == 1 ? "" : "s")"
         }
-        return homeModel.isLoading ? "…" : "Nutrition"
+        let accessNote = homeModel.canViewNutrition ? "" : " · hidden from member"
+        return (homeModel.isLoading ? "…" : "Nutrition") + accessNote
     }
 
     private var progressSubtitle: String {
@@ -1334,6 +1648,61 @@ struct AdminClientHubView: View {
             return "Next: \(line)"
         }
         return homeModel.upcomingSessionCount == 0 ? "No upcoming" : "\(homeModel.upcomingSessionCount) upcoming"
+    }
+}
+
+private struct ClaimOnboardingChecklistSheet: View {
+    let clientName: String
+    let onOpenPlans: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("\(clientName) is on your roster")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(Club360Theme.cardTitle)
+                Text("Suggested next steps:")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Club360Theme.captionOnGlass)
+
+                checklistRow(1, "Member settings — turn on Workouts, Meals, Schedule, Payments as needed")
+                checklistRow(2, "Plans & schedule — assign a workout or meal plan and first session")
+                checklistRow(3, "Payment setup — Venmo/Zelle and next due date")
+
+                Spacer()
+
+                Button("Open Plans & schedule", action: onOpenPlans)
+                    .buttonStyle(Club360PrimaryGradientButtonStyle())
+                Button("I’ll do this later", action: onDismiss)
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .foregroundStyle(Club360Theme.captionOnGlass)
+            }
+            .padding(22)
+            .navigationTitle("Client claimed")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close", action: onDismiss)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func checklistRow(_ n: Int, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("\(n)")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 24, height: 24)
+                .background(Club360Theme.burgundy, in: Circle())
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(Club360Theme.cardTitle)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

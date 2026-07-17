@@ -52,7 +52,8 @@ import kotlinx.coroutines.launch
 fun ClientMealsScreen(
     clientId: String,
     onBack: () -> Unit,
-    onOpenMealPhotos: () -> Unit
+    onOpenMealPhotos: () -> Unit,
+    showAppBar: Boolean = true
 ) {
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -78,22 +79,24 @@ fun ClientMealsScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text("Meal Plans") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = BurgundyPrimary
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = BurgundyPrimary
+            if (showAppBar) {
+                TopAppBar(
+                    title = { Text("Meal Plans") },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = BurgundyPrimary
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = BurgundyPrimary
+                    )
                 )
-            )
+            }
         }
     ) { padding ->
         Column(

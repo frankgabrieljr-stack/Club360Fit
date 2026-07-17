@@ -1,7 +1,7 @@
 import Auth
 import SwiftUI
 
-/// Client shell: tab bar + live home data from Supabase (Android `ClientHomeScreen` / `ClientHomeViewModel`).
+/// Client shell: Today home + gated tabs + More (Community, Profile, extras).
 struct ClientHomeView: View {
     @Environment(Club360AuthSession.self) private var auth: Club360AuthSession
     @State private var homeModel = ClientHomeViewModel()
@@ -11,26 +11,28 @@ struct ClientHomeView: View {
         @Bindable var tabRouter = tabRouter
         TabView(selection: $tabRouter.selectedTab) {
             ClientHomeTab(tabRouter: tabRouter)
-                .tabItem { Label("Home", systemImage: "house.fill") }
+                .tabItem { Label("Today", systemImage: "sun.max.fill") }
                 .tag(ClientTab.home)
 
-            ClientWorkoutsTab()
-                .tabItem { Label("Workouts", systemImage: "figure.strengthtraining.traditional") }
-                .tag(ClientTab.workouts)
+            if homeModel.canViewWorkouts {
+                ClientWorkoutsTab()
+                    .tabItem { Label("Workouts", systemImage: "figure.strengthtraining.traditional") }
+                    .tag(ClientTab.workouts)
+            }
 
-            ClientMealsTab(tabRouter: tabRouter)
-                .tabItem { Label("Meals", systemImage: "fork.knife") }
-                .tag(ClientTab.meals)
+            if homeModel.canViewNutrition {
+                ClientMealsTab(tabRouter: tabRouter)
+                    .tabItem { Label("Meals", systemImage: "fork.knife") }
+                    .tag(ClientTab.meals)
+            }
 
             ClientProgressTab()
                 .tabItem { Label("Progress", systemImage: "chart.line.uptrend.xyaxis") }
                 .tag(ClientTab.progress)
 
-            NavigationStack {
-                UserProfileView()
-            }
-            .tabItem { Label("Profile", systemImage: "person.crop.circle") }
-            .tag(ClientTab.profile)
+            ClientMoreTab(tabRouter: tabRouter)
+                .tabItem { Label("More", systemImage: "ellipsis.circle.fill") }
+                .tag(ClientTab.profile)
         }
         .tint(Club360Theme.burgundy)
         .preferredColorScheme(.light)
@@ -40,10 +42,20 @@ struct ClientHomeView: View {
             guard let session = auth.session else { return }
             await homeModel.load(session: session)
         }
+        .onChange(of: homeModel.canViewWorkouts) { _, enabled in
+            if !enabled, tabRouter.selectedTab == .workouts {
+                tabRouter.selectedTab = .home
+            }
+        }
+        .onChange(of: homeModel.canViewNutrition) { _, enabled in
+            if !enabled, tabRouter.selectedTab == .meals {
+                tabRouter.selectedTab = .home
+            }
+        }
     }
 }
 
-// MARK: - Home tab
+// MARK: - Today (Home)
 
 private struct ClientHomeTab: View {
     @Bindable var tabRouter: ClientTabRouter
@@ -56,9 +68,9 @@ private struct ClientHomeTab: View {
                 Club360ScreenBackground()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: 18) {
                         if home.isLoading {
-                            ProgressView("Loading your dashboard…")
+                            ProgressView("Loading your day…")
                                 .tint(Club360Theme.tealDark)
                                 .frame(maxWidth: .infinity)
                                 .padding()
@@ -81,7 +93,7 @@ private struct ClientHomeTab: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 .shadow(color: Color.black.opacity(0.08), radius: 8, y: 4)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Welcome")
+                                Text("Today")
                                     .font(.largeTitle.weight(.bold))
                                     .foregroundStyle(Club360Theme.burgundy)
                                 Text(home.welcomeName)
@@ -91,117 +103,61 @@ private struct ClientHomeTab: View {
                         }
                         .padding(.top, 4)
 
-                        Text("Today")
+                        if !home.isLoading, home.clientId != nil, !home.hasAssignedCoach {
+                            waitingForCoachCard
+                        }
+
+                        if home.canViewEvents {
+                            Button {
+                                tabRouter.homePath.append(HomeDeepLink.schedule)
+                            } label: {
+                                nextSessionCard
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Text("Quick actions")
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(Club360Theme.cardTitle)
                             .textCase(.uppercase)
                             .tracking(0.8)
 
-                        if home.canViewEvents {
-                            nextSessionCard
-                        }
-
-                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                            NavigationLink {
-                                MyWorkoutsView()
-                                    .environment(home)
-                            } label: {
-                                Club360HomeTile(
-                                    title: "Workouts",
+                        VStack(spacing: 10) {
+                            if home.canViewWorkouts {
+                                todayActionRow(
+                                    title: "Log today’s workout",
                                     subtitle: workoutSubtitle,
-                                    systemImage: "figure.strengthtraining.traditional",
-                                    accent: Club360Theme.burgundyLight
-                                )
+                                    systemImage: "figure.strengthtraining.traditional"
+                                ) {
+                                    tabRouter.selectedTab = .workouts
+                                }
                             }
-                            .disabled(!home.canViewWorkouts)
-                            .opacity(home.canViewWorkouts ? 1 : 0.45)
-
-                            NavigationLink {
-                                MyMealsView()
-                                    .environment(home)
-                            } label: {
-                                Club360HomeTile(
-                                    title: "Meals",
+                            if home.canViewNutrition {
+                                todayActionRow(
+                                    title: "Log a meal photo",
                                     subtitle: mealSubtitle,
-                                    systemImage: "takeoutbag.and.cup.and.straw.fill",
-                                    accent: Club360Theme.burgundy
-                                )
-                            }
-                            .disabled(!home.canViewNutrition)
-                            .opacity(home.canViewNutrition ? 1 : 0.45)
-
-                            NavigationLink {
-                                MyProgressView()
-                                    .environment(home)
-                            } label: {
-                                Club360HomeTile(
-                                    title: "Progress",
-                                    subtitle: progressSubtitle,
-                                    systemImage: "chart.line.uptrend.xyaxis",
-                                    accent: Club360Theme.tealDark
-                                )
-                            }
-
-                            NavigationLink {
-                                MyDailyHabitsView()
-                                    .environment(home)
-                            } label: {
-                                Club360HomeTile(
-                                    title: "Habits",
-                                    subtitle: "Water · steps · sleep",
-                                    systemImage: "checkmark.circle.fill",
-                                    accent: Club360Theme.burgundy
-                                )
-                            }
-
-                            if home.canViewEvents {
-                                NavigationLink {
-                                    MyScheduleView()
-                                        .environment(home)
-                                } label: {
-                                    Club360HomeTile(
-                                        title: "Schedule",
-                                        subtitle: scheduleSubtitle,
-                                        systemImage: "calendar.badge.clock",
-                                        accent: Club360Theme.burgundy
-                                    )
+                                    systemImage: "camera.fill"
+                                ) {
+                                    tabRouter.selectedTab = .meals
+                                    tabRouter.mealsPath = NavigationPath()
+                                    tabRouter.mealsPath.append(MealsDeepLink.mealPhotos)
                                 }
                             }
-
+                            todayActionRow(
+                                title: "Daily habits",
+                                subtitle: "Water · steps · sleep",
+                                systemImage: "checkmark.circle.fill"
+                            ) {
+                                tabRouter.homePath.append(HomeDeepLink.habits)
+                            }
                             if home.canViewPayments {
-                                NavigationLink {
-                                    MyPaymentsView()
-                                        .environment(home)
-                                } label: {
-                                    Club360HomeTile(
-                                        title: "Payments",
-                                        subtitle: "Venmo or Zelle",
-                                        systemImage: "banknote.fill",
-                                        accent: Club360Theme.burgundy
-                                    )
+                                todayActionRow(
+                                    title: "Payments",
+                                    subtitle: "Due date · Venmo / Zelle",
+                                    systemImage: "banknote.fill"
+                                ) {
+                                    tabRouter.homePath.append(HomeDeepLink.payments)
                                 }
-                            }
-
-                            NavigationLink {
-                                TransformationGalleryView()
-                            } label: {
-                                Club360HomeTile(
-                                    title: "Gallery",
-                                    subtitle: "Transformation photos",
-                                    systemImage: "photo.on.rectangle.angled",
-                                    accent: Club360Theme.purpleLight
-                                )
-                            }
-
-                            NavigationLink {
-                                UserProfileView()
-                            } label: {
-                                Club360HomeTile(
-                                    title: "Profile",
-                                    subtitle: "Photo & account",
-                                    systemImage: "person.crop.circle.fill",
-                                    accent: Club360Theme.burgundy
-                                )
                             }
                         }
                     }
@@ -209,7 +165,7 @@ private struct ClientHomeTab: View {
                     .padding(.bottom, 24)
                 }
             }
-            .navigationTitle("Home")
+            .navigationTitle("Today")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbar {
@@ -226,9 +182,7 @@ private struct ClientHomeTab: View {
                                     .font(.caption2.weight(.bold))
                                     .foregroundStyle(.white)
                                     .padding(4)
-                                    .background(
-                                        Circle().fill(Club360Theme.peachDeep)
-                                    )
+                                    .background(Circle().fill(Club360Theme.peachDeep))
                                     .offset(x: 10, y: -10)
                             }
                         }
@@ -265,6 +219,60 @@ private struct ClientHomeTab: View {
         }
     }
 
+    private var waitingForCoachCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Waiting for your coach")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(Club360Theme.cardTitle)
+            Text("A coach still needs to claim your account. Meanwhile you can set your profile photo and browse Community from More. Workouts, meals, and posting unlock after you’re assigned.")
+                .font(.footnote)
+                .foregroundStyle(Club360Theme.captionOnGlass)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                tabRouter.selectedTab = .profile
+            } label: {
+                Text("Open More")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Club360Theme.burgundy)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .club360Glass(cornerRadius: 22)
+    }
+
+    private func todayActionRow(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: systemImage)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Club360Theme.burgundy)
+                    .frame(width: 36)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Club360Theme.cardTitle)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(Club360Theme.captionOnGlass)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Club360Theme.captionOnGlass)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .club360Glass(cornerRadius: 22)
+        }
+        .buttonStyle(.plain)
+    }
+
     private var nextSessionCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -273,7 +281,11 @@ private struct ClientHomeTab: View {
                     .foregroundStyle(Club360Theme.captionOnTintedCard)
                     .textCase(.uppercase)
                 Spacer()
-                Image(systemName: "calendar.badge.clock")
+                Text("View schedule")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Club360Theme.burgundy)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.bold))
                     .foregroundStyle(Club360Theme.burgundy)
             }
             Text(home.nextSessionLine ?? "No upcoming sessions scheduled.")
@@ -302,31 +314,123 @@ private struct ClientHomeTab: View {
     }
 
     private var workoutSubtitle: String {
-        guard home.canViewWorkouts else { return "Disabled by coach" }
         if let t = home.currentWorkoutTitle {
-            return "Current: \(t) · \(home.workoutPlanCount) plan\(home.workoutPlanCount == 1 ? "" : "s")"
+            return "Current: \(t)"
         }
-        return home.isLoading ? "…" : "Plans & sessions"
+        return home.isLoading ? "…" : "Open workouts"
     }
 
     private var mealSubtitle: String {
-        guard home.canViewNutrition else { return "Disabled by coach" }
         if let t = home.currentMealTitle {
-            return "Current: \(t) · \(home.mealPlanCount) plan\(home.mealPlanCount == 1 ? "" : "s")"
+            return "Current: \(t)"
         }
-        return home.isLoading ? "…" : "Nutrition"
+        return home.isLoading ? "…" : "Open meal photos"
+    }
+}
+
+// MARK: - More tab
+
+private struct ClientMoreTab: View {
+    @Bindable var tabRouter: ClientTabRouter
+    @Environment(ClientHomeViewModel.self) private var home: ClientHomeViewModel
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Club360ScreenBackground()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("More")
+                            .font(.largeTitle.weight(.bold))
+                            .foregroundStyle(Club360Theme.burgundy)
+                            .padding(.top, 4)
+
+                        Text("Community, account, and extras")
+                            .font(.subheadline)
+                            .foregroundStyle(Club360Theme.captionOnGlass)
+
+                        NavigationLink {
+                            CommunityView()
+                                .environment(home)
+                        } label: {
+                            moreRow(title: "Community", subtitle: "Members, tips & encouragement", systemImage: "person.2.fill")
+                        }
+                        .buttonStyle(.plain)
+
+                        NavigationLink {
+                            UserProfileView()
+                        } label: {
+                            moreRow(title: "Profile", subtitle: "Photo & account", systemImage: "person.crop.circle.fill")
+                        }
+                        .buttonStyle(.plain)
+
+                        if home.canViewEvents {
+                            NavigationLink {
+                                MyScheduleView()
+                                    .environment(home)
+                            } label: {
+                                moreRow(title: "Schedule", subtitle: "Upcoming sessions", systemImage: "calendar.badge.clock")
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        if home.canViewPayments {
+                            NavigationLink {
+                                MyPaymentsView()
+                                    .environment(home)
+                            } label: {
+                                moreRow(title: "Payments", subtitle: "Venmo or Zelle", systemImage: "banknote.fill")
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        NavigationLink {
+                            MyDailyHabitsView()
+                                .environment(home)
+                        } label: {
+                            moreRow(title: "Habits", subtitle: "Water · steps · sleep", systemImage: "checkmark.circle.fill")
+                        }
+                        .buttonStyle(.plain)
+
+                        NavigationLink {
+                            TransformationGalleryView()
+                        } label: {
+                            moreRow(title: "Gallery", subtitle: "Transformation photos", systemImage: "photo.on.rectangle.angled")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 28)
+                }
+            }
+            .navigationTitle("More")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        }
     }
 
-    private var progressSubtitle: String {
-        let n = home.progressCheckInCount
-        return n == 0 ? "Metrics" : "\(n) check-in\(n == 1 ? "" : "s") logged"
-    }
-
-    private var scheduleSubtitle: String {
-        if let line = home.nextSessionLine {
-            return "Next: \(line)"
+    private func moreRow(title: String, subtitle: String, systemImage: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Club360Theme.burgundy)
+                .frame(width: 36)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Club360Theme.cardTitle)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(Club360Theme.captionOnGlass)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Club360Theme.captionOnGlass)
         }
-        return home.upcomingSessionCount == 0 ? "No upcoming" : "\(home.upcomingSessionCount) upcoming"
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .club360Glass(cornerRadius: 22)
     }
 }
 

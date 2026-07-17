@@ -19,6 +19,7 @@ enum ClientTab: Int, Hashable, CaseIterable {
     case workouts = 1
     case meals = 2
     case progress = 3
+    /// More tab (Community, Profile, Schedule, Payments, etc.)
     case profile = 4
 }
 
@@ -70,6 +71,9 @@ final class ClientTabRouter {
         case "gallery", "transformation":
             selectedTab = .home
             homePath.append(HomeDeepLink.gallery)
+        case "community", "community_post", "community_reply", "peer_tip":
+            // Community lives under More
+            selectedTab = .profile
         case "client_payment", "payment_confirmation":
             // Client submitted payment info — stay on home payments
             selectedTab = .home

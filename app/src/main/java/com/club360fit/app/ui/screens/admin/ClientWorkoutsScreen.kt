@@ -55,7 +55,8 @@ import java.time.LocalDate
 @Composable
 fun ClientWorkoutsScreen(
     clientId: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    showAppBar: Boolean = true
 ) {
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -87,22 +88,24 @@ fun ClientWorkoutsScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text("Workout Plans") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = BurgundyPrimary
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = BurgundyPrimary
+            if (showAppBar) {
+                TopAppBar(
+                    title = { Text("Workout Plans") },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = BurgundyPrimary
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = BurgundyPrimary
+                    )
                 )
-            )
+            }
         }
     ) { padding ->
         Column(

@@ -2,13 +2,15 @@ import Observation
 import SwiftUI
 import UIKit
 
-/// Mirrors Android `MyPaymentsScreen` (Venmo / Zelle / confirmations / history).
+/// Mirrors Android `MyPaymentsScreen` (member) + coach approve/log from `ClientPaymentsScreen`.
 struct MyPaymentsView: View {
     var isCoachReviewing = false
 
     @Environment(ClientHomeViewModel.self) private var home: ClientHomeViewModel
+    @Environment(\.scenePhase) private var scenePhase
     @State private var model = MyPaymentsViewModel()
     @State private var showConfirm = false
+    @State private var showLogPayment = false
     @State private var showIntroHelp = false
     @State private var showUpcomingDueHelp = false
     @State private var showCoachNoteHelp = false
@@ -16,12 +18,15 @@ struct MyPaymentsView: View {
     @State private var showZelleHelp = false
     @State private var expandedConfirmationHelp: Set<String> = []
     @State private var expandedRecordHelp: Set<String> = []
+    @State private var leftForExternalPay = false
+    @State private var showReturnConfirmPrompt = false
+    @State private var reviewingConfirmationId: String?
 
     var body: some View {
         Group {
             if home.clientId == nil {
                 ContentUnavailableView("No profile", systemImage: "person.crop.circle.badge.xmark")
-            } else if !home.canViewPayments {
+            } else if !isCoachReviewing, !home.canViewPayments {
                 ContentUnavailableView(
                     "Payments unavailable",
                     systemImage: "lock.fill",
@@ -42,6 +47,21 @@ struct MyPaymentsView: View {
             guard let cid = home.clientId else { return }
             await model.load(clientId: cid)
         }
+        .onChange(of: scenePhase) { _, phase in
+            guard !isCoachReviewing, phase == .active, leftForExternalPay else { return }
+            leftForExternalPay = false
+            showReturnConfirmPrompt = true
+        }
+        .confirmationDialog(
+            "Did you finish paying?",
+            isPresented: $showReturnConfirmPrompt,
+            titleVisibility: .visible
+        ) {
+            Button("Confirm payment") { showConfirm = true }
+            Button("Not yet", role: .cancel) {}
+        } message: {
+            Text("Tap Confirm payment to notify your coach with the amount due.")
+        }
         .sheet(isPresented: $showConfirm) {
             if let s = model.settings, let cid = home.clientId {
                 ConfirmPaymentSheet(
@@ -49,6 +69,18 @@ struct MyPaymentsView: View {
                     defaultAmount: s.nextDueAmount ?? "",
                     onDone: {
                         showConfirm = false
+                        Task { await model.load(clientId: cid) }
+                    }
+                )
+            }
+        }
+        .sheet(isPresented: $showLogPayment) {
+            if let cid = home.clientId {
+                LogPaymentSheet(
+                    clientId: cid,
+                    defaultAmount: model.settings?.nextDueAmount ?? "",
+                    onDone: {
+                        showLogPayment = false
                         Task { await model.load(clientId: cid) }
                     }
                 )
@@ -77,8 +109,21 @@ struct MyPaymentsView: View {
                     }
 
                     if model.settings == nil, !model.isLoading {
-                        Text("Your coach hasn’t set up payment info yet.")
+                        Text(isCoachReviewing
+                              ? "No payment settings yet — open Payment setup to add Venmo/Zelle and a due date."
+                              : "Your coach hasn’t set up payment info yet.")
                             .foregroundStyle(Club360Theme.captionOnGlass)
+                    }
+
+                    if isCoachReviewing, model.settings == nil, !model.isLoading {
+                        Button {
+                            showLogPayment = true
+                        } label: {
+                            Label("Log payment", systemImage: "plus.circle.fill")
+                        }
+                        .buttonStyle(Club360PrimaryGradientButtonStyle())
+
+                        confirmationAndHistorySections
                     }
 
                     if let s = model.settings {
@@ -86,7 +131,7 @@ struct MyPaymentsView: View {
                             title: "How this screen works",
                             helpTitle: nil,
                             helpBody: isCoachReviewing
-                                ? "This is a read-only coach preview of the member payment screen. Clients confirm payments from their own app."
+                                ? "Approve or decline client “I paid” confirmations, or log a payment you received outside the app. Recurring due dates advance when you log or approve."
                                 : "Your coach sets how to pay (Venmo, Zelle, etc.), what’s due next, and can log payments on your history. "
                                     + "After you pay outside the app, tap I paid to notify them.",
                             isExpanded: $showIntroHelp
@@ -115,98 +160,105 @@ struct MyPaymentsView: View {
                             .club360Glass(cornerRadius: 22)
                         }
 
-                        if let url = s.venmoUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !url.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Club360InfoSectionHeader(
-                                    title: "Venmo",
-                                    helpTitle: "Pay with Venmo",
-                                    helpBody:
-                                        isCoachReviewing
-                                            ? "This is the Venmo detail the client sees in their app."
-                                            : "Use your coach’s link or QR to pay in the Venmo app. "
-                                                + "After paying, tap I paid so they can match it to your account.",
-                                    isExpanded: $showVenmoHelp
-                                )
-                                if let u = URL(string: url) {
-                                    Link(destination: u) {
-                                        Label("Open Venmo", systemImage: "arrow.up.right.square")
-                                            .font(.headline)
-                                            .foregroundStyle(.white)
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 14)
-                                            .background(Club360Theme.primaryButtonGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                            .shadow(color: Club360Theme.purple.opacity(0.3), radius: 10, y: 5)
+                        if !isCoachReviewing {
+                            if let url = s.venmoUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !url.isEmpty {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Club360InfoSectionHeader(
+                                        title: "Venmo",
+                                        helpTitle: "Pay with Venmo",
+                                        helpBody:
+                                            "Use your coach’s link or QR to pay in the Venmo app. "
+                                            + "After paying, you’ll be asked to confirm so they can match it.",
+                                        isExpanded: $showVenmoHelp
+                                    )
+                                    if let u = URL(string: url) {
+                                        Link(destination: u) {
+                                            Label("Open Venmo", systemImage: "arrow.up.right.square")
+                                                .font(.headline)
+                                                .foregroundStyle(.white)
+                                                .frame(maxWidth: .infinity)
+                                                .padding(.vertical, 14)
+                                                .background(Club360Theme.primaryButtonGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                                .shadow(color: Club360Theme.purple.opacity(0.3), radius: 10, y: 5)
+                                        }
+                                        .simultaneousGesture(TapGesture().onEnded {
+                                            leftForExternalPay = true
+                                        })
                                     }
-                                }
-                                QRCodeImageView(content: url)
-                                    .frame(maxHeight: 220)
-                                    .padding(.vertical, 8)
-                            }
-                            .padding(16)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .club360Glass(cornerRadius: 28)
-                        }
-
-                        if s.zelleEmail?.isEmpty == false || s.zellePhone?.isEmpty == false {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Club360InfoSectionHeader(
-                                    title: "Zelle",
-                                    helpTitle: "Pay with Zelle",
-                                    helpBody:
-                                        isCoachReviewing
-                                            ? "This is the Zelle detail the client sees in their app."
-                                            : "Send to the email or phone your coach listed. Copy a value with the clipboard icon, "
-                                                + "then confirm in your banking app and tap I paid here.",
-                                    isExpanded: $showZelleHelp
-                                )
-                                if let em = s.zelleEmail?.trimmingCharacters(in: .whitespacesAndNewlines), !em.isEmpty {
-                                    copyRow(label: "Email", value: em)
-                                    QRCodeImageView(content: em)
+                                    QRCodeImageView(content: url)
                                         .frame(maxHeight: 220)
                                         .padding(.vertical, 8)
                                 }
-                                if let ph = s.zellePhone?.trimmingCharacters(in: .whitespacesAndNewlines), !ph.isEmpty {
-                                    copyRow(label: "Phone", value: ph)
-                                }
+                                .padding(16)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .club360Glass(cornerRadius: 28)
                             }
-                            .padding(16)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .club360Glass(cornerRadius: 28)
-                        }
 
-                        if isCoachReviewing {
-                            Text("Only the client can submit payment confirmations.")
-                                .font(.footnote.weight(.medium))
-                                .foregroundStyle(Club360Theme.captionOnGlass)
-                        } else {
+                            if s.zelleEmail?.isEmpty == false || s.zellePhone?.isEmpty == false {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Club360InfoSectionHeader(
+                                        title: "Zelle",
+                                        helpTitle: "Pay with Zelle",
+                                        helpBody:
+                                            "Send to the email or phone your coach listed. Copy a value with the clipboard icon, "
+                                            + "then confirm in your banking app — we’ll prompt you to tap I paid when you return.",
+                                        isExpanded: $showZelleHelp
+                                    )
+                                    if let em = s.zelleEmail?.trimmingCharacters(in: .whitespacesAndNewlines), !em.isEmpty {
+                                        copyRow(label: "Email", value: em)
+                                        QRCodeImageView(content: em)
+                                            .frame(maxHeight: 220)
+                                            .padding(.vertical, 8)
+                                    }
+                                    if let ph = s.zellePhone?.trimmingCharacters(in: .whitespacesAndNewlines), !ph.isEmpty {
+                                        copyRow(label: "Phone", value: ph)
+                                    }
+                                }
+                                .padding(16)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .club360Glass(cornerRadius: 28)
+                            }
+
                             Button {
                                 showConfirm = true
                             } label: {
                                 Text("I paid")
                             }
                             .buttonStyle(Club360PrimaryGradientButtonStyle())
+                        } else {
+                            Button {
+                                showLogPayment = true
+                            } label: {
+                                Label("Log payment", systemImage: "plus.circle.fill")
+                            }
+                            .buttonStyle(Club360PrimaryGradientButtonStyle())
                         }
 
-                        if !model.confirmations.isEmpty {
-                            Text(isCoachReviewing ? "Client confirmations" : "Your confirmations")
-                                .font(.headline.weight(.semibold))
-                                .foregroundStyle(Club360Theme.cardTitle)
-                            ForEach(model.confirmations) { c in
-                                confirmationCard(c, expandedConfirmationHelp: $expandedConfirmationHelp)
-                            }
-                        }
-
-                        if !model.records.isEmpty {
-                            Text("History")
-                                .font(.headline.weight(.semibold))
-                                .foregroundStyle(Club360Theme.cardTitle)
-                            ForEach(model.records) { r in
-                                recordCard(r, expandedRecordHelp: $expandedRecordHelp)
-                            }
-                        }
+                        confirmationAndHistorySections
                     }
                 }
                 .padding()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var confirmationAndHistorySections: some View {
+        if !model.confirmations.isEmpty {
+            Text(isCoachReviewing ? "Client confirmations" : "Your confirmations")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(Club360Theme.cardTitle)
+            ForEach(model.confirmations) { c in
+                confirmationCard(c, expandedConfirmationHelp: $expandedConfirmationHelp)
+            }
+        }
+
+        if !model.records.isEmpty {
+            Text("History")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(Club360Theme.cardTitle)
+            ForEach(model.records) { r in
+                recordCard(r, expandedRecordHelp: $expandedRecordHelp)
             }
         }
     }
@@ -269,6 +321,7 @@ struct MyPaymentsView: View {
             Spacer()
             Button {
                 UIPasteboard.general.string = value
+                leftForExternalPay = true
             } label: {
                 Image(systemName: "doc.on.doc")
             }
@@ -302,9 +355,11 @@ struct MyPaymentsView: View {
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(Club360Theme.captionOnGlass)
                 }
-                Club360InfoTrailingButton(isExpanded: expanded)
+                if !isCoachReviewing {
+                    Club360InfoTrailingButton(isExpanded: expanded)
+                }
             }
-            if expandedConfirmationHelp.wrappedValue.contains(c.id) {
+            if !isCoachReviewing, expandedConfirmationHelp.wrappedValue.contains(c.id) {
                 Club360InfoHelpBlock(
                     helpTitle: "Confirmation",
                     helpBody:
@@ -320,10 +375,50 @@ struct MyPaymentsView: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(Club360Theme.captionOnGlass)
             }
+            if isCoachReviewing, c.status == "pending", let rid = c.rowId, let cid = home.clientId {
+                HStack(spacing: 12) {
+                    Button {
+                        Task { await reviewConfirmation(id: rid, clientId: cid, approve: true) }
+                    } label: {
+                        if reviewingConfirmationId == rid {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Text("Approve")
+                        }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .tint(Club360Theme.tealDark)
+                    .disabled(reviewingConfirmationId != nil)
+
+                    Button(role: .destructive) {
+                        Task { await reviewConfirmation(id: rid, clientId: cid, approve: false) }
+                    } label: {
+                        Text("Decline")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .disabled(reviewingConfirmationId != nil)
+                }
+                .padding(.top, 4)
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .club360Glass(cornerRadius: 28)
+    }
+
+    private func reviewConfirmation(id: String, clientId: String, approve: Bool) async {
+        reviewingConfirmationId = id
+        defer { reviewingConfirmationId = nil }
+        do {
+            if approve {
+                try await ClientDataService.approvePaymentConfirmation(confirmationId: id, clientId: clientId)
+            } else {
+                try await ClientDataService.declinePaymentConfirmation(confirmationId: id, clientId: clientId)
+            }
+            await model.load(clientId: clientId)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     private func confirmationStatusLabel(_ status: String) -> String {
@@ -355,9 +450,11 @@ struct MyPaymentsView: View {
                 Text(Club360Formatting.formatPaymentInstant(r.paidAt))
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(Club360Theme.captionOnGlass)
-                Club360InfoTrailingButton(isExpanded: expanded)
+                if !isCoachReviewing {
+                    Club360InfoTrailingButton(isExpanded: expanded)
+                }
             }
-            if expandedRecordHelp.wrappedValue.contains(r.id) {
+            if !isCoachReviewing, expandedRecordHelp.wrappedValue.contains(r.id) {
                 Club360InfoHelpBlock(
                     helpTitle: "Payment history",
                     helpBody:
@@ -473,6 +570,90 @@ private struct ConfirmPaymentSheet: View {
                 amountLabel: amt.isEmpty ? nil : amt,
                 note: note,
                 method: method
+            )
+            dismiss()
+            onDone()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct LogPaymentSheet: View {
+    let clientId: String
+    var defaultAmount: String
+    var onDone: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var amount: String
+    @State private var method = "venmo"
+    @State private var note = ""
+    @State private var paidAt = Date()
+    @State private var isSubmitting = false
+    @State private var errorMessage: String?
+
+    init(clientId: String, defaultAmount: String, onDone: @escaping () -> Void) {
+        self.clientId = clientId
+        self.defaultAmount = defaultAmount
+        self.onDone = onDone
+        _amount = State(initialValue: defaultAmount)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Amount", text: $amount)
+                    Picker("Method", selection: $method) {
+                        Text("Venmo").tag("venmo")
+                        Text("Zelle").tag("zelle")
+                        Text("Other").tag("other")
+                    }
+                    DatePicker("Paid on", selection: $paidAt, displayedComponents: .date)
+                    TextField("Note (optional)", text: $note, axis: .vertical)
+                        .lineLimit(2...4)
+                } footer: {
+                    Text("Creates a history entry and advances a weekly/monthly due date when recurrence is set.")
+                }
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage).foregroundStyle(.red).font(.footnote)
+                    }
+                }
+            }
+            .tint(Club360Theme.tealDark)
+            .club360FormScreen()
+            .navigationTitle("Log payment")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isSubmitting {
+                        ProgressView().tint(Club360Theme.tealDark)
+                    } else {
+                        Button("Save") { Task { await submit() } }
+                            .foregroundStyle(Club360Theme.tealDark)
+                    }
+                }
+            }
+        }
+    }
+
+    private func submit() async {
+        isSubmitting = true
+        errorMessage = nil
+        defer { isSubmitting = false }
+        let amt = amount.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            try await ClientDataService.insertPaymentRecord(
+                clientId: clientId,
+                amountLabel: amt.isEmpty ? nil : amt,
+                method: method,
+                note: note,
+                paidAt: paidAt
             )
             dismiss()
             onDone()

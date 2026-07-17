@@ -235,6 +235,26 @@ struct PaymentConfirmationInsert: Encodable, Sendable {
     }
 }
 
+struct PaymentRecordInsert: Encodable, Sendable {
+    let id: String
+    let clientId: String
+    let amountLabel: String?
+    let paidAt: String
+    let method: String
+    let note: String
+    let recordedBy: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case clientId = "client_id"
+        case amountLabel = "amount_label"
+        case paidAt = "paid_at"
+        case method
+        case note
+        case recordedBy = "recorded_by"
+    }
+}
+
 // MARK: - Notifications (`client_notifications`)
 
 struct ClientNotificationDTO: Decodable, Sendable, Identifiable {

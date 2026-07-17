@@ -33,7 +33,8 @@ object MealPhotoRepository {
         bytes: ByteArray,
         logDate: LocalDate,
         notes: String,
-        originalFilename: String
+        originalFilename: String,
+        mealSlot: MealPhotoSlot = MealPhotoSlot.OTHER
     ): MealPhotoLogDto = withContext(Dispatchers.IO) {
         val safeName = originalFilename.replace("\\s+".toRegex(), "_").ifBlank { "photo.jpg" }
         val path = "$clientId/${System.currentTimeMillis()}_$safeName"
@@ -42,7 +43,8 @@ object MealPhotoRepository {
             clientId = clientId,
             logDate = logDate,
             storagePath = path,
-            notes = notes.trim()
+            notes = notes.trim(),
+            mealSlot = mealSlot.raw
         )
         try {
             client.postgrest["meal_photo_logs"].insert(row)

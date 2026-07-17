@@ -61,6 +61,33 @@ struct CoachMainHubView: View {
                             assignButton("Meal plan", systemImage: "takeoutbag.and.cup.and.straw.fill", mode: .meal)
                         }
 
+                        NavigationLink {
+                            CommunityView(mode: .coach)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "person.2.fill")
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(Club360Theme.tealDark)
+                                    .frame(width: 36)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Community")
+                                        .font(.headline.weight(.semibold))
+                                        .foregroundStyle(Club360Theme.cardTitle)
+                                    Text("Browse feed · reply with Coach badge")
+                                        .font(.caption)
+                                        .foregroundStyle(Club360Theme.captionOnGlass)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(Club360Theme.captionOnGlass)
+                            }
+                            .padding(16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .club360Glass(cornerRadius: 22)
+                        }
+                        .buttonStyle(.plain)
+
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Calendar")
                                 .font(.subheadline.weight(.bold))
@@ -646,15 +673,19 @@ private struct HubSessionCard: View {
     }
 }
 
-private struct HubSessionActionsSheet: View {
+struct HubSessionActionsSheet: View {
     let event: ScheduleEventDTO
     let clientName: String?
     var isBusy: Bool = false
+    /// When the list has a local completion override (Schedule tab), prefer it over `event.isCompleted`.
+    var isCompletedOverride: Bool? = nil
     let onMarkComplete: () -> Void
     let onMarkIncomplete: () -> Void
     let onAddNote: () -> Void
     let onDelete: () -> Void
     let onDismiss: () -> Void
+
+    private var isCompleted: Bool { isCompletedOverride ?? event.isCompleted }
 
     private var noteLabel: String {
         let n = (event.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -685,7 +716,7 @@ private struct HubSessionActionsSheet: View {
 
                 if let rid = event.rowId, !rid.isEmpty {
                     VStack(spacing: 10) {
-                        if !event.isCompleted {
+                        if !isCompleted {
                             hubActionButton(
                                 title: "Mark complete",
                                 systemImage: "checkmark.circle.fill",
@@ -776,7 +807,7 @@ private struct HubSessionActionsSheet: View {
     }
 }
 
-private struct HubSessionNoteSheet: View {
+struct HubSessionNoteSheet: View {
     let event: ScheduleEventDTO
     var isBusy: Bool = false
     let onSave: (String) -> Void

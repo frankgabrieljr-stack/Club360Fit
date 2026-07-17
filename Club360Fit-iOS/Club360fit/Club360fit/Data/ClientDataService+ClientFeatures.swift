@@ -171,6 +171,133 @@ extension ClientDataService {
         )
     }
 
+    /// Coach: log a received payment (creates `payment_records` row). Returns new row id.
+    @discardableResult
+    static func insertPaymentRecord(
+        clientId: String,
+        amountLabel: String?,
+        method: String,
+        note: String,
+        paidAt: Date = Date(),
+        advanceRecurrence: Bool = true
+    ) async throws -> String {
+        let m = method.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let safeMethod = m.isEmpty ? "other" : m
+        let recordId = UUID().uuidString.lowercased()
+        let recordedBy = svc.auth.currentSession?.user.id.uuidString.lowercased()
+        let trimmedAmount = amountLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let row = PaymentRecordInsert(
+            id: recordId,
+            clientId: clientId,
+            amountLabel: (trimmedAmount?.isEmpty == false) ? trimmedAmount : nil,
+            paidAt: ISO8601DateFormatter().string(from: paidAt),
+            method: safeMethod,
+            note: note.trimmingCharacters(in: .whitespacesAndNewlines),
+            recordedBy: recordedBy
+        )
+        try await svc
+            .from("payment_records")
+            .insert(row)
+            .execute()
+        if advanceRecurrence {
+            await PaymentReminderService.advanceRecurringDueDate(clientId: clientId)
+        }
+        return recordId
+    }
+
+    /// Coach: approve a pending confirmation → payment record + status update.
+    static func approvePaymentConfirmation(confirmationId: String, clientId: String) async throws {
+        let rows: [PaymentConfirmationDTO] = try await svc
+            .from("payment_confirmations")
+            .select()
+            .eq("id", value: confirmationId)
+            .limit(1)
+            .execute()
+            .value
+        guard let conf = rows.first else {
+            throw NSError(domain: "Payments", code: 404, userInfo: [NSLocalizedDescriptionKey: "Confirmation not found."])
+        }
+        guard conf.clientId == clientId else {
+            throw NSError(domain: "Payments", code: 400, userInfo: [NSLocalizedDescriptionKey: "Confirmation does not match client."])
+        }
+        guard conf.status == "pending" else {
+            throw NSError(domain: "Payments", code: 400, userInfo: [NSLocalizedDescriptionKey: "This confirmation was already reviewed."])
+        }
+
+        var noteParts: [String] = []
+        let confNote = conf.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !confNote.isEmpty { noteParts.append(confNote) }
+        noteParts.append("Confirmed in app by client")
+        let note = noteParts.joined(separator: " · ")
+
+        let paidAt = parsePaymentInstant(conf.submittedAt) ?? Date()
+        let recordId = try await insertPaymentRecord(
+            clientId: clientId,
+            amountLabel: conf.amountLabel,
+            method: conf.method,
+            note: note,
+            paidAt: paidAt,
+            advanceRecurrence: true
+        )
+
+        let reviewedBy = svc.auth.currentSession?.user.id.uuidString.lowercased()
+        let reviewedAt = ISO8601DateFormatter().string(from: Date())
+        let patch: [String: AnyJSON] = [
+            "status": .string("approved"),
+            "reviewed_at": .string(reviewedAt),
+            "reviewed_by": reviewedBy.map { .string($0) } ?? .null,
+            "payment_record_id": .string(recordId),
+        ]
+        try await svc
+            .from("payment_confirmations")
+            .update(patch)
+            .eq("id", value: confirmationId)
+            .execute()
+    }
+
+    /// Coach: decline a pending confirmation (no payment record).
+    static func declinePaymentConfirmation(confirmationId: String, clientId: String) async throws {
+        let rows: [PaymentConfirmationDTO] = try await svc
+            .from("payment_confirmations")
+            .select()
+            .eq("id", value: confirmationId)
+            .limit(1)
+            .execute()
+            .value
+        guard let conf = rows.first else {
+            throw NSError(domain: "Payments", code: 404, userInfo: [NSLocalizedDescriptionKey: "Confirmation not found."])
+        }
+        guard conf.clientId == clientId else {
+            throw NSError(domain: "Payments", code: 400, userInfo: [NSLocalizedDescriptionKey: "Confirmation does not match client."])
+        }
+        guard conf.status == "pending" else {
+            throw NSError(domain: "Payments", code: 400, userInfo: [NSLocalizedDescriptionKey: "This confirmation was already reviewed."])
+        }
+
+        let reviewedBy = svc.auth.currentSession?.user.id.uuidString.lowercased()
+        let reviewedAt = ISO8601DateFormatter().string(from: Date())
+        let patch: [String: AnyJSON] = [
+            "status": .string("declined"),
+            "reviewed_at": .string(reviewedAt),
+            "reviewed_by": reviewedBy.map { .string($0) } ?? .null,
+            "payment_record_id": .null,
+        ]
+        try await svc
+            .from("payment_confirmations")
+            .update(patch)
+            .eq("id", value: confirmationId)
+            .execute()
+    }
+
+    private static func parsePaymentInstant(_ raw: String?) -> Date? {
+        guard let raw, !raw.isEmpty else { return nil }
+        let frac = ISO8601DateFormatter()
+        frac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        return frac.date(from: raw) ?? plain.date(from: raw)
+    }
+
     // MARK: - Notifications (`client_notifications`)
 
     static func fetchClientNotifications(clientId: String, limit: Int = 40) async throws -> [ClientNotificationDTO] {

@@ -104,6 +104,34 @@ struct UserProfileView: View {
                     .padding(16)
                     .club360Glass()
 
+                    if auth.session?.user.isAdminRole == true {
+                        NavigationLink {
+                            CommunityView(mode: .coach)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "person.2.fill")
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(Club360Theme.tealDark)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Community")
+                                        .font(.headline.weight(.semibold))
+                                        .foregroundStyle(Club360Theme.cardTitle)
+                                    Text("Encourage members · Coach badge on replies")
+                                        .font(.caption)
+                                        .foregroundStyle(Club360Theme.captionOnGlass)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(Club360Theme.captionOnGlass)
+                            }
+                            .padding(16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .club360Glass(cornerRadius: 22)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Profile details")
                             .font(.headline.weight(.semibold))

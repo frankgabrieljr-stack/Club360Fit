@@ -120,6 +120,14 @@ struct MyNotificationsView: View {
                                 .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
+                                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                    Button {
+                                        Task { await markNotificationRead(n) }
+                                    } label: {
+                                        Label("Read", systemImage: "checkmark.circle")
+                                    }
+                                    .tint(Club360Theme.tealDark)
+                                }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                     if inbox == .coach, canReply(to: n) {
                                         Button {
@@ -227,7 +235,11 @@ struct MyNotificationsView: View {
         }()
 
         return Button {
-            actionTarget = n
+            if inbox == .member {
+                Task { await openNotification(n) }
+            } else {
+                actionTarget = n
+            }
         } label: {
             HStack(alignment: .top, spacing: 12) {
                 if showUnreadDot {
@@ -248,6 +260,11 @@ struct MyNotificationsView: View {
                             .font(.caption)
                             .foregroundStyle(Club360Theme.captionOnGlass)
                     }
+                    if inbox == .member {
+                        Text("Tap to open · swipe for read / delete")
+                            .font(.caption2)
+                            .foregroundStyle(Club360Theme.captionOnGlass)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -255,6 +272,20 @@ struct MyNotificationsView: View {
             .club360Glass()
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            if inbox == .coach, canReply(to: n) {
+                Button("Reply") {
+                    replyTarget = n
+                    replyText = ""
+                }
+            }
+            Button("Mark read") {
+                Task { await markNotificationRead(n) }
+            }
+            Button("Delete", role: .destructive) {
+                Task { await deleteNotification(n) }
+            }
+        }
     }
 }
 

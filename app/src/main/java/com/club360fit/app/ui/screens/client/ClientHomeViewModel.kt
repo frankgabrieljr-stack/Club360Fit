@@ -29,6 +29,7 @@ data class ClientHomeUiState(
     /** First name or email local-part for "Welcome, …" */
     val welcomeName: String = "there",
     val clientId: String? = null,
+    val hasAssignedCoach: Boolean = false,
     val canViewNutrition: Boolean = true,
     val canViewWorkouts: Boolean = true,
     val canViewPayments: Boolean = true,
@@ -91,6 +92,7 @@ class ClientHomeViewModel : ViewModel() {
                     isLoading = false,
                     welcomeName = welcomeName,
                     clientId = clientId,
+                    hasAssignedCoach = !client.coachId.isNullOrBlank(),
                     canViewNutrition = client.canViewNutrition,
                     canViewWorkouts = client.canViewWorkouts,
                     canViewPayments = client.canViewPayments,

@@ -1,18 +1,38 @@
 import Observation
 import SwiftUI
 
-/// All `client_notifications` across coached members (RLS). Shown from the main Coach Hub bell.
+/// Shared coach Updates inbox (Hub + client hub). Grouped by member; optional `initialClientId` deep-links into one client.
 struct CoachHubNotificationsView: View {
     let clientNameById: [String: String]
+    /// When set (e.g. from client hub bell), opens that member’s thread first.
+    var initialClientId: String? = nil
     var onUnreadChanged: () -> Void = {}
 
     @State private var model = CoachHubNotificationsModel()
+    @State private var resolvedNames: [String: String] = [:]
     @State private var replyTarget: ClientNotificationDTO?
     @State private var replyText = ""
     @State private var replyError: String?
     @State private var showReplyError = false
     @State private var actionTarget: ClientNotificationDTO?
     @State private var selectedClientId: String?
+    @State private var openClientHub: CoachUpdatesClientRef?
+
+    init(
+        clientNameById: [String: String],
+        initialClientId: String? = nil,
+        onUnreadChanged: @escaping () -> Void = {}
+    ) {
+        self.clientNameById = clientNameById
+        self.initialClientId = initialClientId
+        self.onUnreadChanged = onUnreadChanged
+        _selectedClientId = State(initialValue: initialClientId)
+        _resolvedNames = State(initialValue: clientNameById)
+    }
+
+    private var names: [String: String] {
+        resolvedNames.merging(clientNameById) { current, _ in current }
+    }
 
     private var notificationGroups: [CoachNotificationClientGroup] {
         var order: [String] = []
@@ -23,10 +43,15 @@ struct CoachHubNotificationsView: View {
             }
             grouped[item.clientId, default: []].append(item)
         }
+        // Keep deep-linked client visible even when they have zero rows.
+        if let initialClientId, !initialClientId.isEmpty, grouped[initialClientId] == nil {
+            order.insert(initialClientId, at: 0)
+            grouped[initialClientId] = []
+        }
         return order.map { clientId in
             CoachNotificationClientGroup(
                 clientId: clientId,
-                displayName: clientNameById[clientId] ?? "Member",
+                displayName: names[clientId] ?? "Member",
                 items: grouped[clientId] ?? []
             )
         }
@@ -34,13 +59,13 @@ struct CoachHubNotificationsView: View {
 
     var body: some View {
         Group {
-            if model.isLoading, model.items.isEmpty {
+            if model.isLoading, model.items.isEmpty, selectedClientId == nil {
                 ZStack {
                     Club360ScreenBackground()
                     ProgressView()
                         .tint(Club360Theme.tealDark)
                 }
-            } else if model.items.isEmpty {
+            } else if model.items.isEmpty, selectedClientId == nil {
                 ZStack {
                     Club360ScreenBackground()
                     ContentUnavailableView(
@@ -58,21 +83,20 @@ struct CoachHubNotificationsView: View {
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Mark all read") {
-                    Task {
-                        try? await ClientDataService.markAllNotificationsReadForCoach()
-                        await model.load(showLoading: false)
-                        onUnreadChanged()
-                    }
+                Button(selectedClientId == nil ? "Mark all read" : "Mark read") {
+                    Task { await markAllReadInScope() }
                 }
                 .tint(Club360Theme.tealDark)
             }
         }
         .task {
-            await model.load()
+            await reloadInbox()
         }
         .refreshable {
-            await model.load(showLoading: false)
+            await reloadInbox(showLoading: false)
+        }
+        .navigationDestination(item: $openClientHub) { ref in
+            AdminClientHubView(clientId: ref.id, displayTitle: ref.displayTitle)
         }
         .alert("Reply to workout note", isPresented: replySheetPresented) {
             TextField("Write your reply", text: $replyText, axis: .vertical)
@@ -97,6 +121,11 @@ struct CoachHubNotificationsView: View {
                     replyTarget = target
                     replyText = ""
                     actionTarget = nil
+                }
+            }
+            if let target = actionTarget {
+                Button("Open client") {
+                    Task { await openClient(from: target) }
                 }
             }
             Button("Mark read") {
@@ -136,14 +165,23 @@ struct CoachHubNotificationsView: View {
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
 
-                        ForEach(group.items, id: \.id) { n in
-                            notificationCard(n)
-                                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        if group.items.isEmpty {
+                            Text("No updates for this member yet.")
+                                .font(.subheadline)
+                                .foregroundStyle(Club360Theme.captionOnGlass)
+                                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    notificationSwipeActions(for: n)
-                                }
+                        } else {
+                            ForEach(group.items, id: \.id) { n in
+                                notificationCard(n)
+                                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        notificationSwipeActions(for: n)
+                                    }
+                            }
                         }
                     } header: {
                         Text(group.displayName)
@@ -191,7 +229,40 @@ struct CoachHubNotificationsView: View {
 
     private var selectedGroup: CoachNotificationClientGroup? {
         guard let selectedClientId else { return nil }
-        return notificationGroups.first { $0.clientId == selectedClientId }
+        if let existing = notificationGroups.first(where: { $0.clientId == selectedClientId }) {
+            return existing
+        }
+        return CoachNotificationClientGroup(
+            clientId: selectedClientId,
+            displayName: names[selectedClientId] ?? "Member",
+            items: []
+        )
+    }
+
+    private func reloadInbox(showLoading: Bool = true) async {
+        let loadedNames = await model.load(showLoading: showLoading)
+        resolvedNames.merge(loadedNames) { _, new in new }
+        resolvedNames.merge(clientNameById) { _, new in new }
+    }
+
+    private func markAllReadInScope() async {
+        if let cid = selectedClientId {
+            try? await ClientDataService.markAllCoachNotificationsReadForClient(clientId: cid)
+        } else {
+            try? await ClientDataService.markAllNotificationsReadForCoach()
+        }
+        await reloadInbox(showLoading: false)
+        onUnreadChanged()
+    }
+
+    private func openClient(from n: ClientNotificationDTO) async {
+        let name = names[n.clientId] ?? "Member"
+        await markNotificationRead(n)
+        // Already on this member’s filter from client hub — stay put after mark-read.
+        if selectedClientId == n.clientId, initialClientId == n.clientId {
+            return
+        }
+        openClientHub = CoachUpdatesClientRef(id: n.clientId, displayTitle: name)
     }
 
     private func clientTile(_ group: CoachNotificationClientGroup) -> some View {
@@ -234,7 +305,7 @@ struct CoachHubNotificationsView: View {
     private func deleteNotification(_ n: ClientNotificationDTO) async {
         guard let id = n.rowId else { return }
         try? await ClientDataService.deleteClientNotificationForCoach(notificationId: id)
-        await model.load(showLoading: false)
+        await reloadInbox(showLoading: false)
         onUnreadChanged()
     }
 
@@ -298,7 +369,7 @@ struct CoachHubNotificationsView: View {
             )
             replyTarget = nil
             replyText = ""
-            await model.load(showLoading: false)
+            await reloadInbox(showLoading: false)
             onUnreadChanged()
         } catch {
             replyError = error.localizedDescription
@@ -310,7 +381,7 @@ struct CoachHubNotificationsView: View {
         guard let id = n.rowId else { return }
         try? await ClientDataService.markNotificationReadAsCoach(notificationId: id)
         actionTarget = nil
-        await model.load(showLoading: false)
+        await reloadInbox(showLoading: false)
         onUnreadChanged()
     }
 
@@ -318,7 +389,7 @@ struct CoachHubNotificationsView: View {
         guard let id = n.rowId else { return }
         try? await ClientDataService.deleteClientNotificationForCoach(notificationId: id)
         actionTarget = nil
-        await model.load(showLoading: false)
+        await reloadInbox(showLoading: false)
         onUnreadChanged()
     }
 }
@@ -331,18 +402,29 @@ private struct CoachNotificationClientGroup: Identifiable {
     var id: String { clientId }
 }
 
+private struct CoachUpdatesClientRef: Identifiable, Hashable {
+    let id: String
+    let displayTitle: String
+}
+
 @Observable
 @MainActor
 private final class CoachHubNotificationsModel {
     var isLoading = true
     var items: [ClientNotificationDTO] = []
 
-    func load(showLoading: Bool = true) async {
+    /// Loads notifications and returns client id → display name for the inbox.
+    @discardableResult
+    func load(showLoading: Bool = true) async -> [String: String] {
         if showLoading { isLoading = true }
         defer { if showLoading { isLoading = false } }
         let clients = ((try? await ClientDataService.fetchClientsForCoach()) ?? [])
             .filter { !($0.coachId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) }
         let ids = Set(clients.compactMap { $0.id })
         items = (try? await ClientDataService.fetchNotificationsForCoach(clientIds: ids, limit: 80)) ?? []
+        return Dictionary(uniqueKeysWithValues: clients.compactMap { c -> (String, String)? in
+            guard let id = c.id, !id.isEmpty else { return nil }
+            return (id, AdminViewModel.listTitle(for: c))
+        })
     }
 }

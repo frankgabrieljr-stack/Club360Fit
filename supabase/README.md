@@ -62,3 +62,11 @@ Clients submit confirmations in the app; coaches review under **Client payment c
 
 - `migrations/010_adherence_retention.sql` — daily habits, workout session logs, in-app notifications, `expected_sessions` on `workout_plans`
 - `migrations/011_client_read_schedule_events.sql` — clients can `SELECT` `schedule_events` where `client_id` is their profile (needed for client schedule + adherence nudges)
+
+## Community (peer support)
+
+- `migrations/030_client_community.sql` — app-wide `community_posts` + `community_comments`, plus `fetch_community_member_directory()`
+- `migrations/031_community_member_directory_profile.sql` — directory adds `user_id` + `avatar_url` for member community profiles (name/photo/coach only)
+- `migrations/032_coach_community_replies.sql` — coaches can browse directory + reply (`is_coach_reply`); members still own posts
+- `migrations/033_community_reply_notifications.sql` — on reply, notify post author (member inbox) + assigned coach (Updates); redeploy `send-device-push` for peer push auth
+- `migrations/034_meal_photo_meal_slot.sql` — `meal_slot` (breakfast/lunch/dinner/snack/other) for day-grouped meal photo UI

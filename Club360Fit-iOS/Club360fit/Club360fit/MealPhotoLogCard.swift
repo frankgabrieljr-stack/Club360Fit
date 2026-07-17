@@ -9,6 +9,8 @@ struct MealPhotoLogCard: View {
     let clientId: String
     /// When set (coach inbox), shows member name above the image.
     var clientNameHeader: String?
+    /// When false (day-grouped lists), date is shown on the section header instead.
+    var showsDateHeadline: Bool = true
     let isCoachReviewing: Bool
     var onDataChanged: () -> Void
 
@@ -44,11 +46,34 @@ struct MealPhotoLogCard: View {
                 }
             }
 
+            HStack(alignment: .center, spacing: 10) {
+                mealSlotBadge
+                Spacer(minLength: 0)
+                if isCoachReviewing {
+                    Text(log.needsCoachFeedback ? "Needs review" : "Reviewed")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(log.needsCoachFeedback ? Club360Theme.peachDeep : Club360Theme.mintDeep)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            (log.needsCoachFeedback ? Club360Theme.peachDeep : Club360Theme.mintDeep)
+                                .opacity(0.16),
+                            in: Capsule()
+                        )
+                } else if let fb = log.coachFeedback?.trimmingCharacters(in: .whitespacesAndNewlines), !fb.isEmpty {
+                    Label("Coach replied", systemImage: "checkmark.circle.fill")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(Club360Theme.mintDeep)
+                }
+            }
+
             mealImageBlock
 
-            Text(Club360DateFormats.displayDay(fromPostgresDay: log.logDate))
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(isCoachReviewing ? Club360Theme.burgundy : Club360Theme.cardTitle)
+            if showsDateHeadline {
+                Text(Club360DateFormats.displayDay(fromPostgresDay: log.logDate))
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(isCoachReviewing ? Club360Theme.burgundy : Club360Theme.cardTitle)
+            }
 
             let note = (log.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             if !note.isEmpty {
@@ -111,8 +136,10 @@ struct MealPhotoLogCard: View {
                 case let .success(image):
                     image
                         .resizable()
-                        .scaledToFit()
+                        .scaledToFill()
                         .frame(maxWidth: .infinity)
+                        .frame(height: showsDateHeadline ? 220 : 176)
+                        .clipped()
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 case .failure:
                     Image(systemName: "photo")
@@ -124,6 +151,15 @@ struct MealPhotoLogCard: View {
                 }
             }
         }
+    }
+
+    private var mealSlotBadge: some View {
+        Label(log.resolvedSlot.label, systemImage: log.resolvedSlot.systemImage)
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(Club360Theme.burgundy)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Club360Theme.burgundy.opacity(0.12), in: Capsule())
     }
 
     @ViewBuilder

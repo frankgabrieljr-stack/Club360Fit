@@ -91,7 +91,9 @@ Deno.serve(async (req: Request) => {
       const callerCanNotify =
         callerId === memberUserId ||
         callerId === coachUserId ||
-        callerRole === "admin";
+        callerRole === "admin" ||
+        callerRole === "coach" ||
+        (await canNotifyCommunityReply(adminClient, callerId, clientId, payload));
       if (!callerCanNotify) {
         return json(403, { error: "Caller is not related to this client" });
       }
@@ -102,6 +104,35 @@ Deno.serve(async (req: Request) => {
     return json(500, { error: String(e) });
   }
 });
+
+/** Peer/coach replied on a community post owned by `clientId` — allow push to that member/coach. */
+async function canNotifyCommunityReply(
+  adminClient: ReturnType<typeof createClient>,
+  callerId: string,
+  clientId: string,
+  payload: PushPayload,
+): Promise<boolean> {
+  if ((payload.kind ?? "").toLowerCase() !== "community_reply") return false;
+  const postId = payload.ref_id?.trim();
+  if (!postId) return false;
+
+  const { data: post, error: postErr } = await adminClient
+    .from("community_posts")
+    .select("id,client_id")
+    .eq("id", postId)
+    .maybeSingle();
+  if (postErr || !post) return false;
+  if ((post.client_id as string)?.toLowerCase() !== clientId.toLowerCase()) return false;
+
+  const { data: comments, error: commentErr } = await adminClient
+    .from("community_comments")
+    .select("id")
+    .eq("post_id", postId)
+    .eq("author_user_id", callerId)
+    .limit(1);
+  if (commentErr) return false;
+  return (comments?.length ?? 0) > 0;
+}
 
 async function deliverPush(
   adminClient: ReturnType<typeof createClient>,

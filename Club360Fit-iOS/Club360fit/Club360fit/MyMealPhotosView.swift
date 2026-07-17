@@ -54,7 +54,7 @@ struct MyMealPhotosView: View {
             Club360ScreenBackground()
 
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
+                LazyVStack(alignment: .leading, spacing: 18) {
                     if model.isLoading {
                         ProgressView("Loading photos…")
                             .tint(Club360Theme.tealDark)
@@ -71,28 +71,18 @@ struct MyMealPhotosView: View {
                             .club360Glass(cornerRadius: 22)
                     }
 
-                    if isCoachReviewing, !model.isLoading {
-                        Text("Add quick feedback so your client knows if portions are too much, too little, or on track.")
-                            .font(.subheadline)
-                            .foregroundStyle(Club360Theme.captionOnGlass)
-                            .fixedSize(horizontal: false, vertical: true)
+                    if !model.isLoading {
+                        mealPhotosIntro
                     }
 
-                    if model.logs.isEmpty, !model.isLoading {
-                        Text(
-                            isCoachReviewing
-                                ? "No meal photos from this client yet."
-                                : "No meal photos yet. Tap + to add one so your coach can review portions and adjust your plan."
-                        )
-                        .font(.body)
-                        .foregroundStyle(.secondary)
+                    if model.dayGroups.isEmpty, !model.isLoading {
+                        emptyState
                     }
 
-                    ForEach(model.logs, id: \.rowIdentity) { log in
-                        MealPhotoLogCard(
-                            log: log,
+                    ForEach(model.dayGroups) { day in
+                        MealPhotoDaySection(
+                            day: day,
                             clientId: clientId,
-                            clientNameHeader: nil,
                             isCoachReviewing: isCoachReviewing,
                             onDataChanged: {
                                 Task { await model.load(clientId: clientId) }
@@ -110,6 +100,134 @@ struct MyMealPhotosView: View {
             await model.load(clientId: clientId)
         }
     }
+
+    private var mealPhotosIntro: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(isCoachReviewing ? "Daily meal log" : "Your daily meals")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(Club360Theme.burgundy)
+            Text(
+                isCoachReviewing
+                    ? "Photos are grouped by day — breakfast through snacks. Leave feedback on any meal that needs a tweak."
+                    : "Log breakfast, lunch, dinner, and snacks each day so your coach can review portions and keep your plan on track."
+            )
+            .font(.subheadline)
+            .foregroundStyle(Club360Theme.captionOnGlass)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .club360Glass(cornerRadius: 22)
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Image(systemName: "camera.viewfinder")
+                .font(.system(size: 36, weight: .semibold))
+                .foregroundStyle(Club360Theme.burgundy.opacity(0.85))
+            Text(
+                isCoachReviewing
+                    ? "No meal photos from this client yet."
+                    : "No meal photos yet"
+            )
+            .font(.headline.weight(.semibold))
+            .foregroundStyle(Club360Theme.cardTitle)
+            Text(
+                isCoachReviewing
+                    ? "When they upload, you’ll see each day as a neat meal log."
+                    : "Tap + to add breakfast, lunch, dinner, or a snack. Your coach reviews them day by day."
+            )
+            .font(.subheadline)
+            .foregroundStyle(Club360Theme.captionOnGlass)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .club360Glass(cornerRadius: 24)
+    }
+}
+
+// MARK: - Day section
+
+struct MealPhotoDaySection: View {
+    let day: MealPhotoDayGroup
+    let clientId: String
+    var clientNameHeader: String? = nil
+    let isCoachReviewing: Bool
+    var onDataChanged: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            dayHeader
+
+            if !day.slotsPresent.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(day.slotsPresent) { slot in
+                            Label(slot.label, systemImage: slot.systemImage)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Club360Theme.cardTitle)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.55), in: Capsule())
+                        }
+                    }
+                }
+            }
+
+            ForEach(day.logs, id: \.rowIdentity) { log in
+                MealPhotoLogCard(
+                    log: log,
+                    clientId: clientId,
+                    clientNameHeader: clientNameHeader,
+                    showsDateHeadline: false,
+                    isCoachReviewing: isCoachReviewing,
+                    onDataChanged: onDataChanged
+                )
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(Color.white.opacity(0.28))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(Color.white.opacity(0.45), lineWidth: 1)
+        )
+    }
+
+    private var dayHeader: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(day.displayTitle)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(Club360Theme.burgundy)
+                Text(Club360DateFormats.displayDay(fromPostgresDay: day.logDate))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Club360Theme.captionOnGlass)
+            }
+            Spacer(minLength: 0)
+            Text(day.mealCountLabel)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Club360Theme.tealDark, in: Capsule())
+            if isCoachReviewing {
+                let pending = day.logs.filter(\.needsCoachFeedback).count
+                if pending > 0 {
+                    Text("\(pending) to review")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Club360Theme.peachDeep, in: Capsule())
+                }
+            }
+        }
+    }
 }
 
 @Observable
@@ -117,16 +235,18 @@ struct MyMealPhotosView: View {
 private final class MyMealPhotosViewModel {
     var isLoading = true
     var errorMessage: String?
-    var logs: [MealPhotoLogDTO] = []
+    var dayGroups: [MealPhotoDayGroup] = []
 
     func load(clientId: String) async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
-            logs = try await ClientDataService.listMealPhotoLogs(clientId: clientId)
+            let logs = try await ClientDataService.listMealPhotoLogs(clientId: clientId)
+            dayGroups = MealPhotoDayGroup.grouped(from: logs)
         } catch {
             errorMessage = error.localizedDescription
+            dayGroups = []
         }
     }
 }
@@ -140,6 +260,7 @@ private struct AddMealPhotoSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var mealDate = Date()
+    @State private var mealSlot: MealPhotoSlot = .lunch
     @State private var notes = ""
     @State private var selectedItem: PhotosPickerItem?
     @State private var pickedData: Data?
@@ -209,6 +330,22 @@ private struct AddMealPhotoSheet: View {
 
                 Section {
                     DatePicker("Meal date", selection: $mealDate, displayedComponents: .date)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Which meal?")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Club360Theme.cardTitle)
+                        LazyVGrid(
+                            columns: [GridItem(.flexible()), GridItem(.flexible())],
+                            spacing: 8
+                        ) {
+                            ForEach(MealPhotoSlot.allCases.filter { $0 != .other }) { slot in
+                                mealSlotButton(slot)
+                            }
+                        }
+                        mealSlotButton(.other)
+                    }
+
                     TextField("Notes (optional)", text: $notes, axis: .vertical)
                         .lineLimit(2...4)
                 } header: {
@@ -257,6 +394,45 @@ private struct AddMealPhotoSheet: View {
                 )
                 .ignoresSafeArea()
             }
+            .onAppear {
+                mealSlot = Self.suggestedSlot(for: Date())
+            }
+        }
+    }
+
+    private func mealSlotButton(_ slot: MealPhotoSlot) -> some View {
+        let selected = mealSlot == slot
+        return Button {
+            mealSlot = slot
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: slot.systemImage)
+                Text(slot.label)
+                    .font(.subheadline.weight(.semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .foregroundStyle(selected ? Color.white : Club360Theme.cardTitle)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(selected ? Club360Theme.burgundy : Color.white.opacity(0.7))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(selected ? Color.clear : Color.black.opacity(0.08), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private static func suggestedSlot(for date: Date) -> MealPhotoSlot {
+        let hour = Calendar.current.component(.hour, from: date)
+        switch hour {
+        case 0..<10: return .breakfast
+        case 10..<14: return .lunch
+        case 14..<17: return .snack
+        case 17..<22: return .dinner
+        default: return .snack
         }
     }
 
@@ -282,7 +458,8 @@ private struct AddMealPhotoSheet: View {
                 imageData: data,
                 logDate: mealDate,
                 notes: notes,
-                originalFilename: pickedName
+                originalFilename: pickedName,
+                mealSlot: mealSlot
             )
             dismiss()
             onSaved()

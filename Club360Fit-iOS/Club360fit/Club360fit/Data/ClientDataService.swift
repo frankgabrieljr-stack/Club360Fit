@@ -345,7 +345,8 @@ enum ClientDataService {
         imageData: Data,
         logDate: Date,
         notes: String,
-        originalFilename: String
+        originalFilename: String,
+        mealSlot: MealPhotoSlot = .other
     ) async throws -> MealPhotoLogDTO {
         let safeName = originalFilename.replacingOccurrences(
             of: "\\s+",
@@ -364,7 +365,8 @@ enum ClientDataService {
             clientId: clientId,
             logDate: Club360DateFormats.dayString(logDate),
             storagePath: path,
-            notes: notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
+            mealSlot: mealSlot.rawValue
         )
         do {
             try await db
@@ -384,12 +386,13 @@ enum ClientDataService {
         guard let first = rows.first else {
             throw ClientDataServiceError.insertedMealPhotoRowMissing
         }
+        let slotLabel = first.resolvedSlot.label
         let notePreview = first.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let body: String
         if notePreview.isEmpty {
-            body = "Photo for \(first.logDate)."
+            body = "\(slotLabel) · \(first.logDate)."
         } else {
-            body = "Photo for \(first.logDate) — \(notePreview)"
+            body = "\(slotLabel) · \(first.logDate) — \(notePreview)"
         }
         await ClientDataService.notifyCoachAboutClient(
             clientId: clientId,

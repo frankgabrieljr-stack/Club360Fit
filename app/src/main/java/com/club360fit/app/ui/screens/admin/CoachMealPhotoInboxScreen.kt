@@ -42,7 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.club360fit.app.data.ClientDto
-import com.club360fit.app.data.MealPhotoLogDto
+import com.club360fit.app.data.MealPhotoDayGroup
 import com.club360fit.app.data.MealPhotoRepository
 import com.club360fit.app.ui.theme.BurgundyPrimary
 import com.club360fit.app.ui.theme.Club360Glass
@@ -55,11 +55,24 @@ import kotlinx.coroutines.withContext
 private data class ClientMealGroup(
     val clientId: String,
     val displayName: String,
-    val logs: List<MealPhotoLogDto>
-)
+    val dayGroups: List<MealPhotoDayGroup>
+) {
+    val summaryLine: String
+        get() {
+            val photos = dayGroups.sumOf { it.logs.size }
+            val days = dayGroups.size
+            val pending = dayGroups.sumOf { it.pendingReviewCount }
+            val parts = mutableListOf(
+                "$photos photo${if (photos == 1) "" else "s"}",
+                "$days day${if (days == 1) "" else "s"}"
+            )
+            if (pending > 0) parts.add("$pending to review")
+            return parts.joinToString(" · ")
+        }
+}
 
 /**
- * Coach-wide meal photo feed (newest activity first), aligned with iOS `CoachMealPhotoInboxView`.
+ * Coach-wide meal photo feed — grouped by member, then by day (iOS `CoachMealPhotoInboxView`).
  */
 @Composable
 fun CoachMealPhotoInboxScreen(
@@ -84,11 +97,17 @@ fun CoachMealPhotoInboxScreen(
                         val logs = MealPhotoRepository.listForClient(id)
                         if (logs.isNotEmpty()) {
                             val name = c.fullName?.trim()?.takeIf { it.isNotEmpty() } ?: "(no name)"
-                            out.add(ClientMealGroup(clientId = id, displayName = name, logs = logs))
+                            out.add(
+                                ClientMealGroup(
+                                    clientId = id,
+                                    displayName = name,
+                                    dayGroups = MealPhotoDayGroup.grouped(logs)
+                                )
+                            )
                         }
                     }
                     out.sortedByDescending { g ->
-                        g.logs.maxOfOrNull { it.createdAt ?: "" } ?: ""
+                        g.dayGroups.firstOrNull()?.logs?.maxOfOrNull { it.createdAt ?: "" } ?: ""
                     }
                 }
                 groups = loaded
@@ -114,107 +133,109 @@ fun CoachMealPhotoInboxScreen(
             containerColor = Color.Transparent,
             snackbarHost = { SnackbarHost(snackbarHostState) }
         ) { padding ->
-        when {
-            loading && groups.isEmpty() -> {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = BurgundyPrimary)
+            when {
+                loading && groups.isEmpty() -> {
+                    Box(
+                        Modifier.fillMaxSize().padding(padding),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = BurgundyPrimary)
+                    }
                 }
-            }
 
-            error != null && groups.isEmpty() -> {
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .padding(horizontal = 18.dp)
-                ) {
-                    MealInboxHeader()
-                    Spacer(Modifier.height(24.dp))
-                    Text(error!!, color = MaterialTheme.colorScheme.error)
-                }
-            }
-
-            groups.isEmpty() -> {
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .padding(horizontal = 18.dp)
-                ) {
-                    MealInboxHeader()
-                    Spacer(Modifier.height(24.dp))
-                    Text(
-                        "No meal photos yet. When clients log meals, they appear here.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Club360Glass.captionOnGlass
-                    )
-                }
-            }
-
-            else -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 28.dp),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)
-                ) {
-                    item {
+                error != null && groups.isEmpty() -> {
+                    Column(
+                        Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp)
+                    ) {
                         MealInboxHeader()
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(24.dp))
+                        Text(error!!, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+
+                groups.isEmpty() -> {
+                    Column(
+                        Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp)
+                    ) {
+                        MealInboxHeader()
+                        Spacer(Modifier.height(24.dp))
                         Text(
-                            "Review photos from all clients in one place.",
-                            style = MaterialTheme.typography.bodySmall,
+                            "No meal photos yet. When clients log meals, they appear here day by day.",
+                            style = MaterialTheme.typography.bodyMedium,
                             color = Club360Glass.captionOnGlass
                         )
                     }
-                    items(groups, key = { it.clientId }) { group ->
-                        Text(
-                            group.displayName,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Club360Glass.burgundy
-                        )
-                        Button(
-                            onClick = { onOpenClientHub(group.clientId, group.displayName) },
-                            colors = ButtonDefaults.buttonColors(containerColor = Club360Glass.burgundy),
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        ) {
-                            Text("Open client hub")
+                }
+
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(padding),
+                        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 28.dp),
+                        verticalArrangement = Arrangement.spacedBy(20.dp)
+                    ) {
+                        item {
+                            MealInboxHeader()
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Grouped by member, then by day — breakfast through snacks.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Club360Glass.captionOnGlass
+                            )
                         }
-                        group.logs.forEach { log ->
-                            MealPhotoReviewCard(
-                                clientId = group.clientId,
-                                item = log,
-                                onSaved = {
-                                    reload()
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(
-                                            SubmitResultMessages.SAVED_SUCCESS,
-                                            duration = SnackbarDuration.Short
+                        items(groups, key = { it.clientId }) { group ->
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            group.displayName,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Club360Glass.burgundy
+                                        )
+                                        Text(
+                                            group.summaryLine,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = Club360Glass.captionOnGlass
                                         )
                                     }
-                                },
-                                onError = { msg ->
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(
-                                            SubmitResultMessages.failure(msg),
-                                            duration = SnackbarDuration.Long
-                                        )
+                                    Button(
+                                        onClick = { onOpenClientHub(group.clientId, group.displayName) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Club360Glass.burgundy)
+                                    ) {
+                                        Text("Client hub")
                                     }
                                 }
-                            )
-                            Spacer(Modifier.height(12.dp))
+                                group.dayGroups.forEach { day ->
+                                    CoachMealDaySection(
+                                        day = day,
+                                        clientId = group.clientId,
+                                        onSaved = {
+                                            reload()
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar(
+                                                    SubmitResultMessages.SAVED_SUCCESS,
+                                                    duration = SnackbarDuration.Short
+                                                )
+                                            }
+                                        },
+                                        onError = { msg ->
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar(
+                                                    SubmitResultMessages.failure(msg),
+                                                    duration = SnackbarDuration.Long
+                                                )
+                                            }
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
-        }
         }
     }
 }

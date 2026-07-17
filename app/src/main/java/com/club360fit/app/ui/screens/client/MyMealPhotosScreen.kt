@@ -6,10 +6,12 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +21,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
@@ -29,16 +33,17 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -52,13 +57,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.club360fit.app.data.MealPhotoDayGroup
 import com.club360fit.app.data.MealPhotoLogDto
 import com.club360fit.app.data.MealPhotoRepository
+import com.club360fit.app.data.MealPhotoSlot
+import com.club360fit.app.data.resolvedSlot
 import com.club360fit.app.ui.theme.BurgundyPrimary
 import com.club360fit.app.ui.utils.readBytesFromUri
 import com.club360fit.app.ui.utils.toDisplayDate
@@ -79,11 +89,12 @@ fun MyMealPhotosScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var logs by remember { mutableStateOf<List<MealPhotoLogDto>>(emptyList()) }
+    var dayGroups by remember { mutableStateOf<List<MealPhotoDayGroup>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
 
     var showAddDialog by remember { mutableStateOf(false) }
     var mealDate by remember { mutableStateOf(LocalDate.now()) }
+    var mealSlot by remember { mutableStateOf(MealPhotoSlot.suggestedForNow()) }
     var notesDraft by remember { mutableStateOf("") }
     var uploading by remember { mutableStateOf(false) }
 
@@ -93,7 +104,7 @@ fun MyMealPhotosScreen(
         scope.launch {
             loading = true
             try {
-                logs = MealPhotoRepository.listForClient(clientId)
+                dayGroups = MealPhotoDayGroup.grouped(MealPhotoRepository.listForClient(clientId))
             } catch (e: Exception) {
                 snackbarHostState.showSnackbar(
                     userMessageForMealPhotoError(e),
@@ -105,8 +116,33 @@ fun MyMealPhotosScreen(
         }
     }
 
-    LaunchedEffect(clientId) {
-        reload()
+    LaunchedEffect(clientId) { reload() }
+
+    suspend fun uploadBytes(bytes: ByteArray, filename: String) {
+        uploading = true
+        try {
+            MealPhotoRepository.uploadAndInsert(
+                clientId = clientId,
+                bytes = bytes,
+                logDate = mealDate,
+                notes = notesDraft,
+                originalFilename = filename,
+                mealSlot = mealSlot
+            )
+            snackbarHostState.showSnackbar("Meal photo uploaded")
+            showAddDialog = false
+            notesDraft = ""
+            mealDate = LocalDate.now()
+            mealSlot = MealPhotoSlot.suggestedForNow()
+            reload()
+        } catch (e: Exception) {
+            snackbarHostState.showSnackbar(
+                userMessageForMealPhotoError(e),
+                duration = SnackbarDuration.Long
+            )
+        } finally {
+            uploading = false
+        }
     }
 
     val galleryLauncher = rememberLauncherForActivityResult(
@@ -114,29 +150,8 @@ fun MyMealPhotosScreen(
     ) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
-            uploading = true
-            try {
-                val bytes = readBytesFromUri(context, uri) ?: throw IllegalStateException("Could not read image")
-                MealPhotoRepository.uploadAndInsert(
-                    clientId = clientId,
-                    bytes = bytes,
-                    logDate = mealDate,
-                    notes = notesDraft,
-                    originalFilename = "gallery.jpg"
-                )
-                snackbarHostState.showSnackbar("Meal photo uploaded")
-                showAddDialog = false
-                notesDraft = ""
-                mealDate = LocalDate.now()
-                reload()
-            } catch (e: Exception) {
-                snackbarHostState.showSnackbar(
-                    userMessageForMealPhotoError(e),
-                    duration = SnackbarDuration.Long
-                )
-            } finally {
-                uploading = false
-            }
+            val bytes = readBytesFromUri(context, uri) ?: throw IllegalStateException("Could not read image")
+            uploadBytes(bytes, "gallery.jpg")
         }
     }
 
@@ -147,29 +162,8 @@ fun MyMealPhotosScreen(
         pendingCameraUri = null
         if (!success || uri == null) return@rememberLauncherForActivityResult
         scope.launch {
-            uploading = true
-            try {
-                val bytes = readBytesFromUri(context, uri) ?: throw IllegalStateException("Could not read photo")
-                MealPhotoRepository.uploadAndInsert(
-                    clientId = clientId,
-                    bytes = bytes,
-                    logDate = mealDate,
-                    notes = notesDraft,
-                    originalFilename = "camera.jpg"
-                )
-                snackbarHostState.showSnackbar("Meal photo uploaded")
-                showAddDialog = false
-                notesDraft = ""
-                mealDate = LocalDate.now()
-                reload()
-            } catch (e: Exception) {
-                snackbarHostState.showSnackbar(
-                    userMessageForMealPhotoError(e),
-                    duration = SnackbarDuration.Long
-                )
-            } finally {
-                uploading = false
-            }
+            val bytes = readBytesFromUri(context, uri) ?: throw IllegalStateException("Could not read photo")
+            uploadBytes(bytes, "camera.jpg")
         }
     }
 
@@ -197,7 +191,7 @@ fun MyMealPhotosScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("My meal photos") },
+                title = { Text("Meal photos") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -217,6 +211,7 @@ fun MyMealPhotosScreen(
             FloatingActionButton(
                 onClick = {
                     mealDate = LocalDate.now()
+                    mealSlot = MealPhotoSlot.suggestedForNow()
                     notesDraft = ""
                     showAddDialog = true
                 },
@@ -232,55 +227,71 @@ fun MyMealPhotosScreen(
                 .padding(padding)
         ) {
             when {
-                loading && logs.isEmpty() -> {
+                loading && dayGroups.isEmpty() -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = BurgundyPrimary)
                     }
                 }
 
+                dayGroups.isEmpty() -> {
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            "Your daily meals",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = BurgundyPrimary
+                        )
+                        Text(
+                            "Log breakfast, lunch, dinner, and snacks each day so your coach can review portions.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
                 else -> {
-                    Column(Modifier.fillMaxSize()) {
-                        if (logs.isEmpty()) {
-                            Box(
-                                Modifier
-                                    .fillMaxSize()
-                                    .padding(24.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    "No meal photos yet. Tap + to add a photo so your coach can review portions and adjust your plan.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                                contentPadding = PaddingValues(16.dp)
-                            ) {
-                                items(logs, key = { it.id ?: it.storagePath }) { item ->
-                                    MealPhotoRow(
-                                        item = item,
-                                        imageUrl = MealPhotoRepository.publicUrlFor(item.storagePath),
-                                        onDelete = {
-                                            val logId = item.id ?: return@MealPhotoRow
-                                            scope.launch {
-                                                try {
-                                                    MealPhotoRepository.deleteOwn(clientId, logId)
-                                                    snackbarHostState.showSnackbar("Meal photo removed")
-                                                    reload()
-                                                } catch (e: Exception) {
-                                                    snackbarHostState.showSnackbar(
-                                                        userMessageForMealPhotoError(e),
-                                                        duration = SnackbarDuration.Long
-                                                    )
-                                                }
-                                            }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(16.dp)
+                    ) {
+                        item {
+                            Text(
+                                "Your daily meals",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = BurgundyPrimary
+                            )
+                            Text(
+                                "Photos are grouped by day — breakfast through snacks.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        items(dayGroups, key = { it.logDate.toString() }) { day ->
+                            MemberMealDaySection(
+                                day = day,
+                                onDelete = { item ->
+                                    val logId = item.id ?: return@MemberMealDaySection
+                                    scope.launch {
+                                        try {
+                                            MealPhotoRepository.deleteOwn(clientId, logId)
+                                            snackbarHostState.showSnackbar("Meal photo removed")
+                                            reload()
+                                        } catch (e: Exception) {
+                                            snackbarHostState.showSnackbar(
+                                                userMessageForMealPhotoError(e),
+                                                duration = SnackbarDuration.Long
+                                            )
                                         }
-                                    )
+                                    }
                                 }
-                            }
+                            )
                         }
                     }
                 }
@@ -298,19 +309,32 @@ fun MyMealPhotosScreen(
                         "Date: ${mealDate.toDisplayDate()}",
                         style = MaterialTheme.typography.bodyLarge
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = {
-                            DatePickerDialog(
-                                context,
-                                { _, y, m, d ->
-                                    mealDate = LocalDate.of(y, m + 1, d)
-                                },
-                                mealDate.year,
-                                mealDate.monthValue - 1,
-                                mealDate.dayOfMonth
-                            ).show()
-                        }) { Text("Change date") }
+                    TextButton(onClick = {
+                        DatePickerDialog(
+                            context,
+                            { _, y, m, d -> mealDate = LocalDate.of(y, m + 1, d) },
+                            mealDate.year,
+                            mealDate.monthValue - 1,
+                            mealDate.dayOfMonth
+                        ).show()
+                    }) { Text("Change date") }
+
+                    Text("Which meal?", style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        MealPhotoSlot.entries.forEach { slot ->
+                            FilterChip(
+                                selected = mealSlot == slot,
+                                onClick = { mealSlot = slot },
+                                label = { Text(slot.label) }
+                            )
+                        }
                     }
+
                     OutlinedTextField(
                         value = notesDraft,
                         onValueChange = { notesDraft = it },
@@ -324,9 +348,7 @@ fun MyMealPhotosScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
-                            onClick = {
-                                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                            },
+                            onClick = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
                             enabled = !uploading,
                             modifier = Modifier.weight(1f)
                         ) {
@@ -349,7 +371,10 @@ fun MyMealPhotosScreen(
                         }
                     }
                     if (uploading) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             CircularProgressIndicator(Modifier.size(20.dp), color = BurgundyPrimary)
                             Text("Uploading…", style = MaterialTheme.typography.bodySmall)
                         }
@@ -366,11 +391,68 @@ fun MyMealPhotosScreen(
 }
 
 @Composable
+private fun MemberMealDaySection(
+    day: MealPhotoDayGroup,
+    onDelete: (MealPhotoLogDto) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(day.displayTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = BurgundyPrimary)
+                Text(day.logDate.toDisplayDate(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(
+                day.mealCountLabel,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(BurgundyPrimary)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            )
+        }
+        if (day.slotsPresent.isNotEmpty()) {
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                day.slotsPresent.forEach { slot ->
+                    Text(
+                        slot.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
+        }
+        day.logs.forEach { item ->
+            MealPhotoRow(item = item, imageUrl = MealPhotoRepository.publicUrlFor(item.storagePath), onDelete = { onDelete(item) })
+        }
+    }
+}
+
+@Composable
 private fun MealPhotoRow(
     item: MealPhotoLogDto,
     imageUrl: String,
     onDelete: () -> Unit
 ) {
+    val slot = item.resolvedSlot
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -380,15 +462,22 @@ private fun MealPhotoRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text(item.logDate.toDisplayDate(), style = MaterialTheme.typography.titleSmall, color = BurgundyPrimary)
-                if (!item.notes.isNullOrBlank()) {
-                    Text(item.notes.orEmpty(), style = MaterialTheme.typography.bodySmall)
-                }
-            }
+            Text(
+                slot.label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = BurgundyPrimary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(BurgundyPrimary.copy(alpha = 0.12f))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            )
             IconButton(onClick = onDelete) {
                 Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
             }
+        }
+        if (!item.notes.isNullOrBlank()) {
+            Text(item.notes.orEmpty(), style = MaterialTheme.typography.bodySmall)
         }
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
@@ -398,7 +487,8 @@ private fun MealPhotoRow(
             contentDescription = "Meal photo",
             modifier = Modifier
                 .fillMaxWidth()
-                .height(220.dp)
+                .height(176.dp)
+                .clip(RoundedCornerShape(16.dp))
         )
         if (!item.coachFeedback.isNullOrBlank()) {
             Card(
@@ -408,15 +498,8 @@ private fun MealPhotoRow(
                 )
             ) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        "Coach feedback",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = BurgundyPrimary
-                    )
-                    Text(
-                        item.coachFeedback.orEmpty(),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Text("Coach feedback", style = MaterialTheme.typography.titleSmall, color = BurgundyPrimary)
+                    Text(item.coachFeedback.orEmpty(), style = MaterialTheme.typography.bodyMedium)
                     item.coachFeedbackUpdatedAt?.let { iso ->
                         Text(
                             formatCoachFeedbackTimeForClient(iso),

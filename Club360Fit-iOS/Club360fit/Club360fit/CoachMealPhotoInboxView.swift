@@ -1,7 +1,7 @@
 import Observation
 import SwiftUI
 
-/// Coach-wide feed of meal photos across all visible clients (newest first), with feedback + link into client hub.
+/// Coach-wide feed of meal photos across all visible clients, grouped by member then by day.
 struct CoachMealPhotoInboxView: View {
     @State private var model = CoachMealPhotoInboxViewModel()
 
@@ -33,20 +33,25 @@ struct CoachMealPhotoInboxView: View {
                         ContentUnavailableView(
                             "No meal photos yet",
                             systemImage: "camera",
-                            description: Text("When clients log meals, they appear here in one place.")
+                            description: Text("When clients log meals, they appear here day by day.")
                         )
                         .padding(.top, 24)
                     }
 
                     ForEach(model.groups) { group in
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 14) {
                             HStack(alignment: .firstTextBaseline) {
                                 Image(systemName: "person.circle.fill")
                                     .font(.title3)
                                     .foregroundStyle(Club360Theme.burgundy)
-                                Text(group.displayName)
-                                    .font(.title3.weight(.bold))
-                                    .foregroundStyle(Club360Theme.burgundy)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(group.displayName)
+                                        .font(.title3.weight(.bold))
+                                        .foregroundStyle(Club360Theme.burgundy)
+                                    Text(group.summaryLine)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(Club360Theme.captionOnGlass)
+                                }
                                 Spacer(minLength: 0)
                                 NavigationLink {
                                     AdminClientHubView(clientId: group.clientId, displayTitle: group.displayName)
@@ -58,11 +63,10 @@ struct CoachMealPhotoInboxView: View {
                                 .tint(Club360Theme.tealDark)
                             }
 
-                            ForEach(group.logs, id: \.rowIdentity) { log in
-                                MealPhotoLogCard(
-                                    log: log,
-                                    clientId: log.clientId,
-                                    clientNameHeader: nil,
+                            ForEach(group.dayGroups) { day in
+                                MealPhotoDaySection(
+                                    day: day,
+                                    clientId: group.clientId,
                                     isCoachReviewing: true,
                                     onDataChanged: {
                                         Task { await model.load() }
@@ -97,7 +101,7 @@ struct CoachMealPhotoInboxView: View {
                 Text("Your clients")
                     .font(.title2.weight(.bold))
                     .foregroundStyle(Club360Theme.burgundy)
-                Text("Grouped by member — newest uploads first. Save feedback on each card.")
+                Text("Grouped by member, then by day — breakfast through snacks. Save feedback on each card.")
                     .font(.caption)
                     .foregroundStyle(Club360Theme.cardSubtitle)
             }
@@ -109,9 +113,20 @@ struct CoachMealPhotoInboxView: View {
 private struct InboxClientGroup: Identifiable {
     let clientId: String
     let displayName: String
-    let logs: [MealPhotoLogDTO]
+    let dayGroups: [MealPhotoDayGroup]
 
     var id: String { clientId }
+
+    var summaryLine: String {
+        let photos = dayGroups.reduce(0) { $0 + $1.logs.count }
+        let days = dayGroups.count
+        let pending = dayGroups.flatMap(\.logs).filter(\.needsCoachFeedback).count
+        var parts = ["\(photos) photo\(photos == 1 ? "" : "s")", "\(days) day\(days == 1 ? "" : "s")"]
+        if pending > 0 {
+            parts.append("\(pending) to review")
+        }
+        return parts.joined(separator: " · ")
+    }
 }
 
 @Observable
@@ -155,11 +170,12 @@ private final class CoachMealPhotoInboxViewModel {
             let byClient = Dictionary(grouping: scopedLogs) { $0.clientId }
             groups = order.map { cid in
                 let name = displayName(forClientId: cid, titleByClientId: titleByClientId)
-                let clientLogs = (byClient[cid] ?? []).sorted { a, b in
-                    if a.logDate != b.logDate { return a.logDate > b.logDate }
-                    return (a.createdAt ?? "") > (b.createdAt ?? "")
-                }
-                return InboxClientGroup(clientId: cid, displayName: name, logs: clientLogs)
+                let clientLogs = byClient[cid] ?? []
+                return InboxClientGroup(
+                    clientId: cid,
+                    displayName: name,
+                    dayGroups: MealPhotoDayGroup.grouped(from: clientLogs)
+                )
             }
         } catch {
             errorMessage = error.localizedDescription

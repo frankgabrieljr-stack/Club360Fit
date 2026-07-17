@@ -12,6 +12,8 @@ import com.club360fit.app.ui.screens.welcome.WelcomeScreen
 import com.club360fit.app.ui.screens.auth.AuthScreen
 import com.club360fit.app.ui.screens.auth.ResetPasswordScreen
 import com.club360fit.app.ui.screens.client.ClientHomeScreen
+import com.club360fit.app.ui.screens.client.CommunityScreen
+import com.club360fit.app.ui.screens.client.CommunityViewerMode
 import com.club360fit.app.ui.screens.client.MyMealsScreen
 import com.club360fit.app.ui.screens.client.MyDailyHabitsScreen
 import com.club360fit.app.ui.screens.client.MyMealPhotosScreen
@@ -23,6 +25,8 @@ import com.club360fit.app.ui.screens.client.MyWorkoutsScreen
 import com.club360fit.app.ui.screens.admin.AdminHomeScreen
 import com.club360fit.app.ui.screens.admin.AdminHomeViewModel
 import com.club360fit.app.ui.screens.admin.CoachHubNotificationsScreen
+import com.club360fit.app.ui.screens.admin.CoachPlansHubScreen
+import com.club360fit.app.ui.screens.admin.CoachPlansHubTab
 import com.club360fit.app.ui.screens.admin.ClientProfileScreen
 import com.club360fit.app.ui.screens.admin.ClientMealsScreen
 import com.club360fit.app.ui.screens.admin.ClientMealPhotosScreen
@@ -30,6 +34,7 @@ import com.club360fit.app.ui.screens.admin.ClientPaymentsScreen
 import com.club360fit.app.ui.screens.admin.ClientProgressScreen
 import com.club360fit.app.ui.screens.admin.ClientScheduleScreen
 import com.club360fit.app.ui.screens.admin.ClientWorkoutsScreen
+import android.net.Uri
 import com.club360fit.app.ui.screens.profile.UserProfileScreen
 import com.club360fit.app.ui.screens.gallery.TransformationGalleryScreen
 import io.github.jan.supabase.gotrue.auth
@@ -98,8 +103,22 @@ fun Club360FitNavHost(
                 onOpenPayments = { id -> navController.navigate("${Routes.MY_PAYMENTS}/$id") },
                 onOpenHabits = { id -> navController.navigate("${Routes.MY_HABITS}/$id") },
                 onOpenNotifications = { id -> navController.navigate("${Routes.MY_NOTIFICATIONS}/$id") },
+                onOpenMealPhotos = { id -> navController.navigate("${Routes.MY_MEAL_PHOTOS}/$id") },
+                onOpenCommunity = { navController.navigate(Routes.COMMUNITY) },
                 pendingDeepLink = pendingDeepLink,
                 onPendingDeepLinkConsumed = onPendingDeepLinkConsumed
+            )
+        }
+        composable(Routes.COMMUNITY) {
+            CommunityScreen(
+                mode = CommunityViewerMode.MEMBER,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.COACH_COMMUNITY) {
+            CommunityScreen(
+                mode = CommunityViewerMode.COACH,
+                onBack = { navController.popBackStack() }
             )
         }
         composable("${Routes.MY_WORKOUTS}/{clientId}") { backStackEntry ->
@@ -139,9 +158,22 @@ fun Club360FitNavHost(
             MyNotificationsScreen(
                 clientId = clientId,
                 onBack = { navController.popBackStack() },
-                onOpenPayments = {
-                    navController.navigate("${Routes.MY_PAYMENTS}/$clientId") {
-                        popUpTo("${Routes.MY_NOTIFICATIONS}/$clientId") { inclusive = true }
+                onOpenDeepLink = { link ->
+                    val dest = when (link) {
+                        NotificationDeepLink.PAYMENTS -> "${Routes.MY_PAYMENTS}/$clientId"
+                        NotificationDeepLink.COMMUNITY -> Routes.COMMUNITY
+                        NotificationDeepLink.MEAL_PHOTOS -> "${Routes.MY_MEAL_PHOTOS}/$clientId"
+                        NotificationDeepLink.SCHEDULE -> "${Routes.MY_SCHEDULE}/$clientId"
+                        NotificationDeepLink.WORKOUTS -> "${Routes.MY_WORKOUTS}/$clientId"
+                        NotificationDeepLink.MEALS -> "${Routes.MY_MEALS}/$clientId"
+                        NotificationDeepLink.PROGRESS -> "${Routes.MY_PROGRESS}/$clientId"
+                        NotificationDeepLink.HABITS -> "${Routes.MY_HABITS}/$clientId"
+                        else -> null
+                    }
+                    if (dest != null) {
+                        navController.navigate(dest) {
+                            popUpTo("${Routes.MY_NOTIFICATIONS}/$clientId") { inclusive = true }
+                        }
                     }
                 }
             )
@@ -155,12 +187,21 @@ fun Club360FitNavHost(
                 onOpenClientHub = { clientId ->
                     navController.navigate("${Routes.CLIENT_PROFILE}/$clientId")
                 },
+                onOpenClientHubClaimed = { clientId, title ->
+                    val encoded = Uri.encode(title)
+                    navController.navigate("${Routes.CLIENT_PROFILE_CLAIMED}/$clientId/$encoded")
+                },
                 onOpenClientWorkouts = { clientId ->
                     navController.navigate("${Routes.CLIENT_WORKOUTS}/$clientId")
                 },
                 onOpenClientMeals = { clientId ->
                     navController.navigate("${Routes.CLIENT_MEALS}/$clientId")
                 },
+                onOpenPlansHub = { clientId, title, tab ->
+                    val encoded = Uri.encode(title)
+                    navController.navigate("${Routes.CLIENT_PLANS_HUB}/$clientId/${tab.routeKey}/$encoded")
+                },
+                onOpenCommunity = { navController.navigate(Routes.COACH_COMMUNITY) },
                 onSignOut = {
                     scope.launch {
                         SupabaseClient.client.auth.signOut()
@@ -190,7 +231,42 @@ fun Club360FitNavHost(
                 onOpenMeals = { id -> navController.navigate("${Routes.CLIENT_MEALS}/$id") },
                 onOpenProgress = { id -> navController.navigate("${Routes.CLIENT_PROGRESS}/$id") },
                 onOpenSchedule = { id -> navController.navigate("${Routes.CLIENT_SCHEDULE}/$id") },
-                onOpenPayments = { id -> navController.navigate("${Routes.CLIENT_PAYMENTS}/$id") }
+                onOpenPayments = { id -> navController.navigate("${Routes.CLIENT_PAYMENTS}/$id") },
+                onOpenPlansHub = { id, title ->
+                    val encoded = Uri.encode(title)
+                    navController.navigate("${Routes.CLIENT_PLANS_HUB}/$id/schedule/$encoded")
+                }
+            )
+        }
+        composable("${Routes.CLIENT_PROFILE_CLAIMED}/{clientId}/{title}") { backStackEntry ->
+            val clientId = backStackEntry.arguments?.getString("clientId") ?: return@composable
+            val title = Uri.decode(backStackEntry.arguments?.getString("title") ?: "Client")
+            ClientProfileScreen(
+                clientId = clientId,
+                displayTitleOverride = title,
+                showOnboardingChecklist = true,
+                onBack = { navController.popBackStack() },
+                onOpenWorkouts = { id -> navController.navigate("${Routes.CLIENT_WORKOUTS}/$id") },
+                onOpenMeals = { id -> navController.navigate("${Routes.CLIENT_MEALS}/$id") },
+                onOpenProgress = { id -> navController.navigate("${Routes.CLIENT_PROGRESS}/$id") },
+                onOpenSchedule = { id -> navController.navigate("${Routes.CLIENT_SCHEDULE}/$id") },
+                onOpenPayments = { id -> navController.navigate("${Routes.CLIENT_PAYMENTS}/$id") },
+                onOpenPlansHub = { id, name ->
+                    val encoded = Uri.encode(name)
+                    navController.navigate("${Routes.CLIENT_PLANS_HUB}/$id/schedule/$encoded")
+                }
+            )
+        }
+        composable("${Routes.CLIENT_PLANS_HUB}/{clientId}/{tab}/{title}") { backStackEntry ->
+            val clientId = backStackEntry.arguments?.getString("clientId") ?: return@composable
+            val tab = CoachPlansHubTab.fromRoute(backStackEntry.arguments?.getString("tab"))
+            val title = Uri.decode(backStackEntry.arguments?.getString("title") ?: "Client")
+            CoachPlansHubScreen(
+                clientId = clientId,
+                displayTitle = title,
+                initialTab = tab,
+                onBack = { navController.popBackStack() },
+                onOpenMealPhotos = { navController.navigate("${Routes.CLIENT_MEAL_PHOTOS}/$clientId") }
             )
         }
         composable("${Routes.CLIENT_WORKOUTS}/{clientId}") { backStackEntry ->

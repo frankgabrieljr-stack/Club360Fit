@@ -82,9 +82,9 @@ struct MyMealsView: View {
                             title: "Meal photos",
                             helpTitle: "Photo log",
                             helpBody: isCoachReviewing
-                                ? "Open the photo log to review photos uploaded by this client. Coaches can leave feedback but cannot upload meals for clients."
-                                : "Open the photo log to capture meals with your camera or choose from your library. "
-                                    + "Your coach sees these in their inbox.",
+                                ? "Open the photo log to review this client’s meals day by day (breakfast, lunch, dinner, snacks). Coaches leave feedback but cannot upload for clients."
+                                : "Log breakfast, lunch, dinner, and snacks with your camera or library. "
+                                    + "Photos are grouped by day so you and your coach can review the whole day at a glance.",
                             isExpanded: $showMealPhotosHelp
                         )
                         NavigationLink {
